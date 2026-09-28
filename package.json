@@ -14,7 +14,9 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "encode": "bash scripts/encode.sh",
+    "upload": "node --disable-warning=ExperimentalWarning --env-file=.env.local scripts/upload.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
