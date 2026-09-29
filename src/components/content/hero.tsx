@@ -12,7 +12,13 @@ type HeroContent = {
   subtitles: { lang: string; label: string }[];
 };
 
-export function Hero({ content }: { content: HeroContent }) {
+export function Hero({
+  content,
+  preview = false,
+}: {
+  content: HeroContent;
+  preview?: boolean;
+}) {
   return (
     <section
       aria-labelledby="hero-title"
@@ -72,7 +78,7 @@ export function Hero({ content }: { content: HeroContent }) {
             >
               <path d="M7 4.5v15l12-7.5z" />
             </svg>
-            재생
+            {preview ? "미리보기" : "재생"}
           </Link>
         </div>
       </div>

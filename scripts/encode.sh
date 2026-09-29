@@ -30,13 +30,15 @@ if [[ -e "$OUT" ]]; then
 fi
 mkdir -p "$OUT"/{1080p,720p,480p}
 
-# 세그먼트 6초. GOP 2초(30fps 기준 60프레임)로 세그먼트 경계마다 키프레임 보장.
-# 원본이 3Mbps라 1080p 상한 3M 이상은 의미 없음.
+FPS="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$INPUT" | awk -F/ '{printf "%d", $1/$2}')"
+GOP=$((FPS * 2))
+
+# 세그먼트 6초. GOP 2초로 세그먼트 경계마다 키프레임 보장.
 ffmpeg -hide_banner -y -i "$INPUT" \
   -filter_complex "[0:v]split=3[v1][v2][v3];[v1]scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2[v1o];[v2]scale=w=1280:h=720:force_original_aspect_ratio=decrease:force_divisible_by=2[v2o];[v3]scale=w=854:h=480:force_original_aspect_ratio=decrease:force_divisible_by=2[v3o]" \
   -map "[v1o]" -map 0:a:0 -map "[v2o]" -map 0:a:0 -map "[v3o]" -map 0:a:0 \
   -c:v libx264 -preset fast -profile:v main -pix_fmt yuv420p \
-  -g 60 -keyint_min 60 -sc_threshold 0 \
+  -g "$GOP" -keyint_min "$GOP" -sc_threshold 0 \
   -b:v:0 3000k -maxrate:v:0 3200k -bufsize:v:0 6000k \
   -b:v:1 1500k -maxrate:v:1 1600k -bufsize:v:1 3000k \
   -b:v:2  800k -maxrate:v:2  860k -bufsize:v:2 1600k \

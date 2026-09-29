@@ -71,7 +71,7 @@ export default async function HomePage() {
       <SiteHeader />
       <main className="bg-paper text-ink min-h-dvh pb-16">
         {featured ? (
-          <Hero content={featured} />
+          <Hero content={featured} preview={!user} />
         ) : (
           <section className="mx-auto w-full max-w-7xl px-4 pt-32 sm:px-8">
             <h1 className="text-2xl font-bold">아직 콘텐츠가 없습니다</h1>

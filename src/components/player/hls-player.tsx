@@ -60,11 +60,12 @@ function defaultSubtitle(subtitles: SubtitleTrack[]): string {
   return "off";
 }
 
-async function autoplay(video: HTMLVideoElement) {
+async function autoplay(video: HTMLVideoElement, onMutedFallback: () => void) {
   try {
     await video.play();
   } catch {
     video.muted = true;
+    onMutedFallback();
     video.play().catch(() => {});
   }
 }
@@ -125,6 +126,7 @@ export function HlsPlayer({
   const [fullscreen, setFullscreen] = useState(false);
   const [rate, setRate] = useState(1);
   const [ended, setEnded] = useState(false);
+  const [mutedHint, setMutedHint] = useState(false);
 
   useWatchProgress(videoRef, mode === "full" ? historyContentId : undefined);
 
@@ -149,7 +151,7 @@ export function HlsPlayer({
             })),
           );
           setStatus("ready");
-          autoplay(video);
+          autoplay(video, () => setMutedHint(true));
         });
         hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
           const l = hls.levels[data.level];
@@ -201,7 +203,7 @@ export function HlsPlayer({
         video.src = src;
         if (startAt) video.currentTime = startAt;
         setStatus("ready");
-        autoplay(video);
+        autoplay(video, () => setMutedHint(true));
         return;
       }
 
@@ -241,6 +243,7 @@ export function HlsPlayer({
     const onPlaying = () => setWaiting(false);
     const onVolume = () => {
       setMuted(video.muted);
+      if (!video.muted) setMutedHint(false);
       setVolume(video.volume);
       if (video.volume > 0) lastVolume.current = video.volume;
     };
@@ -760,6 +763,17 @@ export function HlsPlayer({
           </IconButton>
         </div>
       </div>
+
+      {mutedHint && muted && (
+        <button
+          type="button"
+          onClick={toggleMute}
+          className={`bg-paper-2/90 text-ink hover:bg-paper-3 absolute right-4 z-10 inline-flex h-11 items-center gap-2 rounded-full border border-white/10 px-4 text-sm font-medium shadow-xl backdrop-blur transition-[bottom,background-color] duration-[var(--dur-slow)] ease-[var(--ease-out)] sm:right-8 ${chromeVisible ? "bottom-28" : "bottom-4"}`}
+        >
+          <Icon name="muted" size={18} />
+          음소거 해제
+        </button>
+      )}
 
       {mode === "trailer" && ended && (
         <div

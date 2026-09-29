@@ -16,7 +16,7 @@ function admin() {
 }
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   ctx: RouteContext<"/api/stream/[slug]/[...path]">,
 ) {
   const { slug, path } = await ctx.params;
@@ -51,13 +51,7 @@ export async function GET(
 
   let body: string;
   if (file === "master.m3u8") {
-    body = lines
-      .map((l) =>
-        l && !l.startsWith("#")
-          ? `${request.nextUrl.origin}/api/stream/${slug}/${l.trim()}`
-          : l,
-      )
-      .join("\n");
+    body = lines.join("\n");
   } else {
     const segments = lines
       .filter((l) => l && !l.startsWith("#"))

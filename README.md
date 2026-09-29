@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# miniflix
 
-## Getting Started
+OTT 스트리밍의 핵심 구조를 직접 구현해 보는 소형 Netflix 형태의 토이 프로젝트.
+MP4 원본 → FFmpeg → HLS(1080p/720p/480p) → hls.js 재생 → ABR 화질 전환 → WebVTT 자막 → 시청 기록 저장까지 한 흐름으로 다룬다.
 
-First, run the development server:
+배포: https://miniflix-chi.vercel.app
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 스택
+
+- Next.js 16 (App Router) · TypeScript · Tailwind v4 · hls.js
+- Prisma 7 + PostgreSQL · Supabase Auth / Storage
+- FFmpeg · HLS · WebVTT · Vercel
+
+## 구조
+
+```
+scripts/encode.sh          MP4 → 3렌디션 HLS
+scripts/encode-trailer.sh  트레일러 → 720p 단일 렌디션
+scripts/upload.mts         media/hls/<slug> → Supabase Storage (--public 옵션)
+prisma/schema.prisma       Content · Subtitle · Profile · WatchHistory
+prisma/seed.mts            콘텐츠 시드
+src/app/watch/[slug]       재생 페이지 (로그인: 풀버전, 비로그인: 트레일러)
+src/app/api/stream         세션 확인 후 서명 URL로 재작성한 HLS 플레이리스트
+src/app/api/watch          시청 위치 저장
+src/components/player      hls.js 플레이어
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 실행
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local   # Supabase 키·DB URL 채우기
+pnpm install
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 콘텐츠 추가
 
-## Learn More
+```bash
+bash scripts/encode.sh media/source/<name>.mp4 <slug>
+pnpm upload <slug>                      # private 버킷
+pnpm upload <slug> subs --public        # 자막 vtt
+pnpm upload <slug>-trailer --public     # 트레일러
+# prisma/seed.mts 에 항목 추가 후
+pnpm db:seed
+```
 
-To learn more about Next.js, take a look at the following resources:
+## 콘텐츠 출처
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Big Buck Bunny — Blender Foundation, CC BY 3.0. 캡션: demuxed/big-buck-captions (CC BY 3.0)
+- Spring — Blender Animation Studio, CC BY 4.0. 캡션: Wikimedia Commons TimedText (CC BY 4.0)
