@@ -80,6 +80,13 @@ export function Hero({
             </svg>
             {preview ? "미리보기" : "재생"}
           </Link>
+          <Link
+            href={`/title/${content.slug}`}
+            scroll={false}
+            className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 text-base font-medium backdrop-blur transition-colors duration-[var(--dur-base)]"
+          >
+            상세 정보
+          </Link>
         </div>
       </div>
     </section>

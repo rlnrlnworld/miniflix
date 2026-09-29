@@ -62,9 +62,33 @@ body {
   --ease-in: var(--ease-in);
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  [tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(100% 0 0 / 0.18) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: oklch(100% 0 0 / 0.18);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(100% 0 0 / 0.4);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

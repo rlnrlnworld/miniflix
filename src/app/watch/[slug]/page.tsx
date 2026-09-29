@@ -49,8 +49,10 @@ export async function generateMetadata({
 
 export default async function WatchPage({
   params,
+  searchParams,
 }: PageProps<"/watch/[slug]">) {
   const { slug } = await params;
+  const { restart } = await searchParams;
   const content = await getContent(slug);
   if (!content) notFound();
   const user = await getUser();
@@ -65,7 +67,10 @@ export default async function WatchPage({
       })
     : null;
   const startAt =
-    history && !history.completed && history.positionSec >= RESUME_MIN_SEC
+    !restart &&
+    history &&
+    !history.completed &&
+    history.positionSec >= RESUME_MIN_SEC
       ? history.positionSec
       : undefined;
 

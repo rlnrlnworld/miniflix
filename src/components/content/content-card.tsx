@@ -14,11 +14,15 @@ export type ContentCardData = {
 
 export function ContentCard({ content }: { content: ContentCardData }) {
   const image = content.thumbnailPath ?? content.posterPath;
+  const continuing = content.progress !== undefined;
   return (
     <Link
-      href={`/watch/${content.slug}`}
+      href={continuing ? `/watch/${content.slug}` : `/title/${content.slug}`}
+      scroll={false}
       className="group block w-56 shrink-0 snap-start sm:w-auto"
-      aria-label={`${content.title} 재생`}
+      aria-label={
+        continuing ? `${content.title} 이어보기` : `${content.title} 상세 정보`
+      }
     >
       <div className="bg-paper-2 relative aspect-video overflow-hidden rounded-lg">
         {image ? (
