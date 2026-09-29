@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { getProfile } from "@/lib/auth";
 import { Logo } from "./logo";
+import { SearchBox } from "./search-box";
 import { UserMenu } from "./user-menu";
 
 export async function SiteHeader() {
@@ -8,22 +10,14 @@ export async function SiteHeader() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-20 bg-linear-to-b from-black/80 to-transparent">
-      <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-6 px-4 sm:px-8">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-6 pr-3 pl-4 sm:pr-4 sm:pl-8">
         <Logo height={22} priority />
 
-        <nav
-          aria-label="주요 메뉴"
-          className="hidden items-center gap-5 text-sm sm:flex"
-        >
-          <Link
-            href="/"
-            className="text-ink hover:text-ink-2 transition-colors duration-[var(--dur-base)]"
-          >
-            홈
-          </Link>
-        </nav>
+        <Suspense>
+          <SearchBox className="mx-auto" />
+        </Suspense>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-3 sm:ml-0">
           {profile ? (
             <UserMenu
               nickname={profile.nickname}

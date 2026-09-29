@@ -1,6 +1,5 @@
 import { ContentRow } from "@/components/content/content-row";
 import { Hero } from "@/components/content/hero";
-import { SiteHeader } from "@/components/site/site-header";
 import { getUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from "@/lib/site";
@@ -68,7 +67,6 @@ export default async function HomePage() {
 
   return (
     <>
-      <SiteHeader />
       <main className="bg-paper text-ink min-h-dvh pb-16">
         {featured ? (
           <Hero content={featured} preview={!user} />
