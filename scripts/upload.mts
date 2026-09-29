@@ -1,4 +1,3 @@
-// media/hls/<slug>/ 를 Supabase Storage 버킷의 <slug>/ 로 미러링 업로드
 // 사용: pnpm upload <slug>
 import { createClient } from "@supabase/supabase-js";
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -16,7 +15,6 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
 };
 
-// 세그먼트는 불변. 플레이리스트는 재인코딩 시 바뀔 수 있어 짧게.
 const CACHE: Record<string, string> = {
   ".m3u8": "3600",
   ".vtt": "3600",

@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,60 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+model Content {
+  id            String   @id @default(uuid()) @db.Uuid
+  slug          String   @unique @db.VarChar(64)
+  title         String   @db.VarChar(200)
+  description   String?
+  durationSec   Int
+  masterPath    String   @db.VarChar(255)
+  posterPath    String?  @db.VarChar(255)
+  thumbnailPath String?  @db.VarChar(255)
+  createdAt     DateTime @default(now()) @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @db.Timestamptz()
+
+  subtitles Subtitle[]
+  histories WatchHistory[]
+}
+
+model Subtitle {
+  id        String  @id @default(uuid()) @db.Uuid
+  contentId String  @db.Uuid
+  lang      String  @db.VarChar(16)
+  label     String  @db.VarChar(50)
+  vttPath   String  @db.VarChar(255)
+  isDefault Boolean @default(false)
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentId, lang])
+}
+
+model Profile {
+  id        String   @id @db.Uuid
+  nickname  String   @db.VarChar(20)
+  avatarUrl String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  histories WatchHistory[]
+}
+
+model WatchHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  contentId     String   @db.Uuid
+  positionSec   Int      @default(0)
+  completed     Boolean  @default(false)
+  lastWatchedAt DateTime @default(now()) @db.Timestamptz()
+  createdAt     DateTime @default(now()) @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @db.Timestamptz()
+
+  user    Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@index([userId, lastWatchedAt(sort: Desc)])
 }

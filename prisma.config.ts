@@ -7,9 +7,9 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "tsx --env-file=.env.local prisma/seed.mts",
   },
   datasource: {
-    // CLI(migrate)는 pooler 아닌 direct 연결 필요
     url: process.env["DIRECT_URL"],
   },
 });
