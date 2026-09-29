@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 import { getProfile } from "@/lib/auth";
 import { Logo } from "./logo";
+import { UserMenu } from "./user-menu";
 
 export async function SiteHeader() {
   const profile = await getProfile();
@@ -25,30 +25,10 @@ export async function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-3">
           {profile ? (
-            <Link
-              href="/settings"
-              className="hover:bg-paper-3/70 flex h-10 items-center gap-2 rounded-lg pr-3 pl-1 transition-colors duration-[var(--dur-base)]"
-            >
-              {profile.avatarUrl ? (
-                <Image
-                  src={profile.avatarUrl}
-                  alt=""
-                  width={32}
-                  height={32}
-                  className="size-8 rounded-md object-cover"
-                />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className="bg-paper-3 text-ink inline-flex size-8 items-center justify-center rounded-md text-sm font-semibold"
-                >
-                  {profile.nickname.slice(0, 1)}
-                </span>
-              )}
-              <span className="text-ink max-w-32 truncate text-sm font-medium">
-                {profile.nickname}
-              </span>
-            </Link>
+            <UserMenu
+              nickname={profile.nickname}
+              avatarUrl={profile.avatarUrl}
+            />
           ) : (
             <Link
               href="/login"
