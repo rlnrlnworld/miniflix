@@ -1,15 +1,37 @@
 import { ContentRow } from "@/components/content/content-row";
 import { Hero } from "@/components/content/hero";
 import { SiteHeader } from "@/components/site/site-header";
+import { getUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { storagePublicUrl } from "@/lib/storage";
 
+const RESUME_MIN_SEC = 30;
+
 export default async function HomePage() {
-  const contents = await prisma.content.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { subtitles: { select: { lang: true, label: true } } },
-  });
+  const user = await getUser();
+  const [contents, histories] = await Promise.all([
+    prisma.content.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { subtitles: { select: { lang: true, label: true } } },
+    }),
+    user
+      ? prisma.watchHistory.findMany({
+          where: {
+            userId: user.id,
+            completed: false,
+            positionSec: { gte: RESUME_MIN_SEC },
+          },
+          orderBy: { lastWatchedAt: "desc" },
+          take: 12,
+          include: { content: true },
+        })
+      : Promise.resolve([]),
+  ]);
   const featured = contents[0];
+  const continueItems = histories.map((h) => ({
+    ...h.content,
+    progress: h.positionSec / h.content.durationSec,
+  }));
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -42,6 +64,7 @@ export default async function HomePage() {
           </section>
         )}
         <div className="relative -mt-6 flex flex-col gap-10 sm:-mt-10">
+          <ContentRow title="이어보기" items={continueItems} />
           <ContentRow title="지금 볼 수 있는 콘텐츠" items={contents} />
         </div>
       </main>

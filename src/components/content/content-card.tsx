@@ -9,6 +9,7 @@ export type ContentCardData = {
   durationSec: number;
   thumbnailPath: string | null;
   posterPath: string | null;
+  progress?: number;
 };
 
 export function ContentCard({ content }: { content: ContentCardData }) {
@@ -46,6 +47,21 @@ export function ContentCard({ content }: { content: ContentCardData }) {
             </svg>
           </span>
         </div>
+        {content.progress !== undefined && (
+          <div
+            role="progressbar"
+            aria-valuenow={Math.round(content.progress * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="시청 진행률"
+            className="absolute inset-x-0 bottom-0 h-1 bg-white/25"
+          >
+            <div
+              className="bg-accent h-full"
+              style={{ width: `${Math.round(content.progress * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
       <p className="text-ink mt-2 truncate text-sm font-medium">
         {content.title}

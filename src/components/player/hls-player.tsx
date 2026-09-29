@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type Hls from "hls.js";
+import { useWatchProgress } from "./use-watch-progress";
 
 export type SubtitleTrack = {
   lang: string;
@@ -16,6 +17,7 @@ type Props = {
   description?: string | null;
   mode?: "full" | "trailer";
   loginHref?: string;
+  historyContentId?: string;
   src: string;
   poster?: string;
   subtitles: SubtitleTrack[];
@@ -51,8 +53,8 @@ async function autoplay(video: HTMLVideoElement) {
   }
 }
 const SEEK_STEP = 10;
-const CUE_LINE_CHROME = 78;
-const CUE_LINE_PLAIN = 92;
+const CUE_BOTTOM_PLAIN_PX = 40;
+const CUE_BOTTOM_CHROME_PX = 100;
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 function formatTime(sec: number): string {
@@ -74,6 +76,7 @@ export function HlsPlayer({
   startAt,
   mode = "full",
   loginHref = "/login",
+  historyContentId,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -103,6 +106,8 @@ export function HlsPlayer({
   const [fullscreen, setFullscreen] = useState(false);
   const [rate, setRate] = useState(1);
   const [ended, setEnded] = useState(false);
+
+  useWatchProgress(videoRef, mode === "full" ? historyContentId : undefined);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -257,12 +262,17 @@ export function HlsPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const line = chromeVisible ? CUE_LINE_CHROME : CUE_LINE_PLAIN;
     const apply = () => {
+      const height = video.clientHeight || 1;
+      const bottomPx = chromeVisible
+        ? CUE_BOTTOM_CHROME_PX
+        : CUE_BOTTOM_PLAIN_PX;
+      const line = Math.max(50, Math.min(96, 100 - (bottomPx / height) * 100));
       for (const track of Array.from(video.textTracks)) {
         for (const cue of Array.from(track.cues ?? [])) {
           const c = cue as VTTCue;
           c.snapToLines = false;
+          c.lineAlign = "end";
           c.line = line;
         }
       }
@@ -270,7 +280,11 @@ export function HlsPlayer({
     apply();
     const tracks = Array.from(video.querySelectorAll("track"));
     tracks.forEach((t) => t.addEventListener("load", apply));
-    return () => tracks.forEach((t) => t.removeEventListener("load", apply));
+    window.addEventListener("resize", apply);
+    return () => {
+      tracks.forEach((t) => t.removeEventListener("load", apply));
+      window.removeEventListener("resize", apply);
+    };
   }, [chromeVisible, subtitle, status]);
 
   const togglePlay = useCallback(() => {
