@@ -17,8 +17,8 @@ const contents = [
       "거대한 토끼 빅 벅이 숲속 작은 동물들에게 괴롭힘을 당하다 통쾌하게 복수하는 이야기. Blender Foundation의 오픈 무비.",
     durationSec: 634,
     masterPath: "bbb/master.m3u8",
-    posterPath: null,
-    thumbnailPath: null,
+    posterPath: "bbb/poster.webp",
+    thumbnailPath: "bbb/thumb.webp",
     subtitles: [
       {
         lang: "en",
