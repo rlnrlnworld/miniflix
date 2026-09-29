@@ -13,6 +13,7 @@ export type SubtitleTrack = {
 
 type Props = {
   title: string;
+  description?: string | null;
   src: string;
   poster?: string;
   subtitles: SubtitleTrack[];
@@ -26,6 +27,26 @@ type Menu = "quality" | "subtitle" | "rate" | null;
 
 const AUTO = -1;
 const HIDE_DELAY = 2500;
+const INFO_DELAY = 100;
+const SUBTITLE_PRIORITY = ["ko", "en"];
+
+function defaultSubtitle(subtitles: SubtitleTrack[]): string {
+  const explicit = subtitles.find((s) => s.isDefault);
+  if (explicit) return explicit.lang;
+  for (const lang of SUBTITLE_PRIORITY) {
+    if (subtitles.some((s) => s.lang === lang)) return lang;
+  }
+  return "off";
+}
+
+async function autoplay(video: HTMLVideoElement) {
+  try {
+    await video.play();
+  } catch {
+    video.muted = true;
+    video.play().catch(() => {});
+  }
+}
 const SEEK_STEP = 10;
 const CUE_LINE_CHROME = 78;
 const CUE_LINE_PLAIN = 92;
@@ -41,7 +62,14 @@ function formatTime(sec: number): string {
   return `${h > 0 ? `${h}:` : ""}${mm}:${String(r).padStart(2, "0")}`;
 }
 
-export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
+export function HlsPlayer({
+  title,
+  description,
+  src,
+  poster,
+  subtitles,
+  startAt,
+}: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -54,11 +82,12 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
   const [levels, setLevels] = useState<Level[]>([]);
   const [selected, setSelected] = useState<number>(AUTO);
   const [playing, setPlaying] = useState<Level | null>(null);
-  const [subtitle, setSubtitle] = useState<string>(
-    subtitles.find((s) => s.isDefault)?.lang ?? "off",
+  const [subtitle, setSubtitle] = useState<string>(() =>
+    defaultSubtitle(subtitles),
   );
   const [menu, setMenu] = useState<Menu>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [infoVisible, setInfoVisible] = useState(false);
 
   const [paused, setPaused] = useState(true);
   const [waiting, setWaiting] = useState(false);
@@ -90,6 +119,7 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
             })),
           );
           setStatus("ready");
+          autoplay(video);
         });
         hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
           const l = hls.levels[data.level];
@@ -125,6 +155,7 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
         video.src = src;
         if (startAt) video.currentTime = startAt;
         setStatus("ready");
+        autoplay(video);
         return;
       }
 
@@ -150,7 +181,10 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
       const b = video.buffered;
       if (b.length) setBuffered(b.end(b.length - 1));
     };
-    const onPlay = () => setPaused(false);
+    const onPlay = () => {
+      setPaused(false);
+      setInfoVisible(false);
+    };
     const onPause = () => setPaused(true);
     const onWaiting = () => setWaiting(true);
     const onPlaying = () => setWaiting(false);
@@ -248,6 +282,7 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
 
   const showChrome = useCallback(() => {
     setChromeVisible(true);
+    setInfoVisible(false);
     window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
       if (!menu) setChromeVisible(false);
@@ -260,6 +295,12 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
     }, HIDE_DELAY);
     return () => window.clearTimeout(hideTimer.current);
   }, [menu]);
+
+  useEffect(() => {
+    if (!paused || chromeVisible || status !== "ready") return;
+    const t = window.setTimeout(() => setInfoVisible(true), INFO_DELAY);
+    return () => window.clearTimeout(t);
+  }, [paused, chromeVisible, status]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -330,7 +371,7 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
             srcLang={s.lang}
             label={s.label}
             src={s.src}
-            default={s.isDefault}
+            default={s.lang === subtitle}
           />
         ))}
       </video>
@@ -361,7 +402,25 @@ export function HlsPlayer({ title, src, poster, subtitles, startAt }: Props) {
         </div>
       )}
 
-      {status === "ready" && paused && !waiting && (
+      <div
+        aria-hidden={!infoVisible}
+        className={`pointer-events-none absolute inset-0 flex flex-col justify-end bg-linear-to-t from-black/90 via-black/60 to-black/30 px-6 pb-24 sm:justify-center sm:px-16 sm:pb-0 ${chromeTransition} ${infoVisible ? "opacity-100" : "opacity-0"}`}
+      >
+        <p className="text-ink-2 mb-3 text-sm font-medium tracking-wide sm:text-base">
+          지금 시청 중
+        </p>
+        <h2 className="text-ink max-w-3xl text-4xl font-bold tracking-tight [overflow-wrap:anywhere] sm:text-6xl">
+          {title}
+        </h2>
+        {description && (
+          <p className="text-ink-2 mt-4 max-w-xl text-base leading-relaxed break-keep sm:text-lg">
+            {description}
+          </p>
+        )}
+        <p className="text-muted mt-6 text-sm">일시정지됨</p>
+      </div>
+
+      {status === "ready" && paused && !waiting && !infoVisible && (
         <button
           type="button"
           onClick={togglePlay}

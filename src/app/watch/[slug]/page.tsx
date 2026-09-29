@@ -30,6 +30,7 @@ export default async function WatchPage({
     <main className="bg-paper text-ink flex min-h-dvh flex-col">
       <HlsPlayer
         title={content.title}
+        description={content.description}
         src={storagePublicUrl(content.masterPath)}
         poster={
           content.posterPath ? storagePublicUrl(content.posterPath) : undefined
