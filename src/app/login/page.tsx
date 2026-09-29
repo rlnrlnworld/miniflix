@@ -4,7 +4,10 @@ import { Logo } from "@/components/site/logo";
 import { getUser } from "@/lib/auth";
 import { LoginForm } from "./login-form";
 
-export const metadata: Metadata = { title: "로그인 · miniflix" };
+export const metadata: Metadata = {
+  title: "로그인",
+  robots: { index: false, follow: false },
+};
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next, error, mode } = await searchParams;

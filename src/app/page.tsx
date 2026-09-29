@@ -3,7 +3,10 @@ import { Hero } from "@/components/content/hero";
 import { SiteHeader } from "@/components/site/site-header";
 import { getUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from "@/lib/site";
 import { storagePublicUrl } from "@/lib/storage";
+
+export const metadata = { alternates: { canonical: "/" } };
 
 const RESUME_MIN_SEC = 30;
 
@@ -35,21 +38,32 @@ export default async function HomePage() {
 
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "ItemList",
-    itemListElement: contents.map((c, i) => ({
-      "@type": "ListItem",
-      position: i + 1,
-      item: {
-        "@type": "VideoObject",
-        name: c.title,
-        description: c.description ?? undefined,
-        duration: `PT${c.durationSec}S`,
-        thumbnailUrl: c.thumbnailPath
-          ? storagePublicUrl(c.thumbnailPath)
-          : undefined,
-        url: `/watch/${c.slug}`,
+    "@graph": [
+      {
+        "@type": "WebSite",
+        name: SITE_NAME,
+        description: SITE_DESCRIPTION,
+        url: siteUrl().toString(),
+        inLanguage: "ko",
       },
-    })),
+      {
+        "@type": "ItemList",
+        itemListElement: contents.map((c, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          item: {
+            "@type": "VideoObject",
+            name: c.title,
+            description: c.description ?? undefined,
+            duration: `PT${c.durationSec}S`,
+            thumbnailUrl: c.thumbnailPath
+              ? storagePublicUrl(c.thumbnailPath)
+              : undefined,
+            url: new URL(`/watch/${c.slug}`, siteUrl()).toString(),
+          },
+        })),
+      },
+    ],
   };
 
   return (

@@ -5,7 +5,10 @@ import { getProfile, getUser } from "@/lib/auth";
 import { NicknameForm } from "./nickname-form";
 import { rerollNickname } from "./actions";
 
-export const metadata: Metadata = { title: "설정 · miniflix" };
+export const metadata: Metadata = {
+  title: "설정",
+  robots: { index: false, follow: false },
+};
 
 export default async function SettingsPage() {
   const user = await getUser();
