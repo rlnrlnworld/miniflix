@@ -19,17 +19,39 @@ const contents = [
     masterPath: "bbb/master.m3u8",
     posterPath: null,
     thumbnailPath: null,
+    subtitles: [
+      {
+        lang: "en",
+        label: "English",
+        vttPath: "bbb/subs/en.vtt",
+        isDefault: false,
+      },
+      {
+        lang: "ko",
+        label: "한국어",
+        vttPath: "bbb/subs/ko.vtt",
+        isDefault: false,
+      },
+    ],
   },
 ];
 
 async function main() {
-  for (const c of contents) {
+  for (const { subtitles, ...c } of contents) {
     const row = await prisma.content.upsert({
       where: { slug: c.slug },
       update: c,
       create: c,
     });
     console.log(`content ${row.slug} (${row.id})`);
+    for (const sub of subtitles) {
+      await prisma.subtitle.upsert({
+        where: { contentId_lang: { contentId: row.id, lang: sub.lang } },
+        update: sub,
+        create: { ...sub, contentId: row.id },
+      });
+      console.log(`  subtitle ${sub.lang}`);
+    }
   }
 }
 

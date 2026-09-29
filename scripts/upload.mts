@@ -1,4 +1,4 @@
-// 사용: pnpm upload <slug>
+// 사용: pnpm upload <slug> [subdir]
 import { createClient } from "@supabase/supabase-js";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -43,8 +43,11 @@ async function walk(dir: string): Promise<string[]> {
 
 async function main() {
   const slug = process.argv[2];
-  if (!slug || !SLUG_RE.test(slug)) {
-    console.error("usage: pnpm upload <slug>  (lowercase alnum + hyphen)");
+  const subdir = process.argv[3];
+  if (!slug || !SLUG_RE.test(slug) || (subdir && !SLUG_RE.test(subdir))) {
+    console.error(
+      "usage: pnpm upload <slug> [subdir]  (lowercase alnum + hyphen)",
+    );
     process.exit(1);
   }
 
@@ -53,7 +56,7 @@ async function main() {
   const bucket = requireEnv("SUPABASE_STORAGE_BUCKET");
 
   const root = path.resolve(process.cwd(), "media", "hls");
-  const localDir = path.resolve(root, slug);
+  const localDir = path.resolve(root, slug, subdir ?? "");
   if (!localDir.startsWith(root + path.sep)) {
     console.error("invalid slug path");
     process.exit(1);
@@ -74,7 +77,7 @@ async function main() {
     );
     process.exit(1);
   }
-  if (!files.some((f) => path.basename(f) === "master.m3u8")) {
+  if (!subdir && !files.some((f) => path.basename(f) === "master.m3u8")) {
     console.error("master.m3u8 not found. run encode first.");
     process.exit(1);
   }
@@ -90,7 +93,7 @@ async function main() {
       const file = queue.shift();
       if (!file) return;
       const rel = path.relative(localDir, file).split(path.sep).join("/");
-      const key = `${slug}/${rel}`;
+      const key = subdir ? `${slug}/${subdir}/${rel}` : `${slug}/${rel}`;
       const ext = path.extname(file);
       const body = await readFile(file);
       const { error } = await sb.storage.from(bucket).upload(key, body, {
@@ -114,9 +117,13 @@ async function main() {
     process.exit(1);
   }
 
-  const { data } = sb.storage.from(bucket).getPublicUrl(`${slug}/master.m3u8`);
   console.log(`\nuploaded ${total} files`);
-  console.log(`master: ${data.publicUrl}`);
+  if (!subdir) {
+    const { data } = sb.storage
+      .from(bucket)
+      .getPublicUrl(`${slug}/master.m3u8`);
+    console.log(`master: ${data.publicUrl}`);
+  }
 }
 
 main().catch((e) => {
