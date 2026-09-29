@@ -27,7 +27,7 @@ export async function SiteHeader() {
           {profile ? (
             <Link
               href="/settings"
-              className="hover:bg-paper-3/70 flex h-10 items-center gap-2 rounded-full pr-3 pl-1 transition-colors duration-[var(--dur-base)]"
+              className="hover:bg-paper-3/70 flex h-10 items-center gap-2 rounded-lg pr-3 pl-1 transition-colors duration-[var(--dur-base)]"
             >
               {profile.avatarUrl ? (
                 <Image
@@ -35,12 +35,12 @@ export async function SiteHeader() {
                   alt=""
                   width={32}
                   height={32}
-                  className="size-8 rounded-full object-cover"
+                  className="size-8 rounded-md object-cover"
                 />
               ) : (
                 <span
                   aria-hidden="true"
-                  className="bg-paper-3 text-ink inline-flex size-8 items-center justify-center rounded-full text-sm font-semibold"
+                  className="bg-paper-3 text-ink inline-flex size-8 items-center justify-center rounded-md text-sm font-semibold"
                 >
                   {profile.nickname.slice(0, 1)}
                 </span>
