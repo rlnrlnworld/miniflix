@@ -33,6 +33,22 @@ const AUTO = -1;
 const HIDE_DELAY = 2500;
 const INFO_DELAY = 100;
 const RELOAD_COOLDOWN_MS = 30_000;
+const VOLUME_KEY = "miniflix:volume";
+const VOLUME_STEP = 0.05;
+
+function readStoredVolume(): number {
+  try {
+    const v = Number(localStorage.getItem(VOLUME_KEY));
+    return Number.isFinite(v) && v > 0 && v <= 1 ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+function storeVolume(v: number) {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(v));
+  } catch {}
+}
 const SUBTITLE_PRIORITY = ["ko", "en"];
 
 function defaultSubtitle(subtitles: SubtitleTrack[]): string {
@@ -103,6 +119,9 @@ export function HlsPlayer({
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [volumeSupported, setVolumeSupported] = useState(true);
+  const lastVolume = useRef(1);
   const [fullscreen, setFullscreen] = useState(false);
   const [rate, setRate] = useState(1);
   const [ended, setEnded] = useState(false);
@@ -202,6 +221,11 @@ export function HlsPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    const initial = readStoredVolume();
+    video.volume = initial;
+    lastVolume.current = initial;
+    setVolume(video.volume);
+    if (video.volume !== initial) setVolumeSupported(false);
     const onTime = () => setCurrentTime(video.currentTime);
     const onDuration = () => setDuration(video.duration);
     const onProgress = () => {
@@ -215,7 +239,11 @@ export function HlsPlayer({
     const onPause = () => setPaused(true);
     const onWaiting = () => setWaiting(true);
     const onPlaying = () => setWaiting(false);
-    const onVolume = () => setMuted(video.muted);
+    const onVolume = () => {
+      setMuted(video.muted);
+      setVolume(video.volume);
+      if (video.volume > 0) lastVolume.current = video.volume;
+    };
     const onRate = () => setRate(video.playbackRate);
     const onEnded = () => {
       setEnded(true);
@@ -303,9 +331,24 @@ export function HlsPlayer({
     );
   }, []);
 
+  const setVolumeTo = useCallback((v: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const next = Math.min(1, Math.max(0, v));
+    video.volume = next;
+    video.muted = next === 0;
+    if (next > 0) storeVolume(next);
+  }, []);
+
   const toggleMute = useCallback(() => {
     const video = videoRef.current;
-    if (video) video.muted = !video.muted;
+    if (!video) return;
+    if (video.muted || video.volume === 0) {
+      video.muted = false;
+      if (video.volume === 0) video.volume = lastVolume.current || 0.5;
+    } else {
+      video.muted = true;
+    }
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -365,6 +408,14 @@ export function HlsPlayer({
         case "m":
           toggleMute();
           break;
+        case "ArrowUp":
+          e.preventDefault();
+          setVolumeTo((videoRef.current?.volume ?? 1) + VOLUME_STEP);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setVolumeTo((videoRef.current?.volume ?? 1) - VOLUME_STEP);
+          break;
         case "f":
           toggleFullscreen();
           break;
@@ -378,7 +429,14 @@ export function HlsPlayer({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [togglePlay, seekBy, toggleMute, toggleFullscreen, showChrome]);
+  }, [
+    togglePlay,
+    seekBy,
+    toggleMute,
+    toggleFullscreen,
+    setVolumeTo,
+    showChrome,
+  ]);
 
   const levelsDesc = [...levels].sort((a, b) => b.height - a.height);
   const trailerEnded = mode === "trailer" && ended;
@@ -551,12 +609,42 @@ export function HlsPlayer({
           >
             <Icon name="forward" />
           </IconButton>
-          <IconButton
-            label={muted ? "음소거 해제" : "음소거"}
-            onClick={toggleMute}
-          >
-            <Icon name={muted ? "muted" : "volume"} />
-          </IconButton>
+          <div className="group/vol flex items-center">
+            <IconButton
+              label={muted || volume === 0 ? "음소거 해제" : "음소거"}
+              onClick={toggleMute}
+            >
+              <Icon
+                name={
+                  muted || volume === 0
+                    ? "muted"
+                    : volume < 0.5
+                      ? "volumeLow"
+                      : "volume"
+                }
+              />
+            </IconButton>
+            {volumeSupported && (
+              <div className="flex w-0 items-center overflow-hidden transition-[width] duration-[var(--dur-base)] ease-[var(--ease-out)] group-focus-within/vol:w-24 group-hover/vol:w-24">
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={muted ? 0 : volume}
+                  aria-label="음량"
+                  aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
+                  onChange={(e) => setVolumeTo(Number(e.target.value))}
+                  className="vol h-6 w-20 shrink-0 cursor-pointer"
+                  style={
+                    {
+                      "--vol": `${Math.round((muted ? 0 : volume) * 100)}%`,
+                    } as React.CSSProperties
+                  }
+                />
+              </div>
+            )}
+          </div>
           <span className="text-ink-2 ml-2 text-sm tabular-nums">
             {formatTime(currentTime)}
             <span className="text-muted"> / {formatTime(duration)}</span>
@@ -870,6 +958,7 @@ const ICONS = {
     <path d="M4 10v4h3l4 4V6l-4 4zM15 9a4 4 0 0 1 0 6M17.5 6.5a8 8 0 0 1 0 11" />
   ),
   muted: <path d="M4 10v4h3l4 4V6l-4 4zM15 9l5 6M20 9l-5 6" />,
+  volumeLow: <path d="M4 10v4h3l4 4V6l-4 4zM15 9a4 4 0 0 1 0 6" />,
   expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
   shrink: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
 } as const;

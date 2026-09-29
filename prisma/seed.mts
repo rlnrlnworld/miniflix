@@ -35,6 +35,37 @@ const contents = [
       },
     ],
   },
+  {
+    slug: "spring",
+    title: "Spring",
+    description:
+      "양치기 소녀 스프링과 개가 계절을 바꾸는 고대의 정령들과 마주하는 이야기. Blender Animation Studio의 오픈 무비.",
+    durationSec: 464,
+    masterPath: "spring/master.m3u8",
+    posterPath: "spring/poster.webp",
+    thumbnailPath: "spring/thumb.webp",
+    trailerPath: "spring-trailer/master.m3u8",
+    subtitles: [
+      {
+        lang: "en",
+        label: "English",
+        vttPath: "spring/subs/en.vtt",
+        isDefault: false,
+      },
+      {
+        lang: "ko",
+        label: "한국어",
+        vttPath: "spring/subs/ko.vtt",
+        isDefault: false,
+      },
+      {
+        lang: "ja",
+        label: "日本語",
+        vttPath: "spring/subs/ja.vtt",
+        isDefault: false,
+      },
+    ],
+  },
 ];
 
 async function main() {

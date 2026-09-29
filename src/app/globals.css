@@ -119,3 +119,43 @@ video::cue {
 video::-webkit-media-text-track-display-backdrop {
   background: transparent;
 }
+
+.vol {
+  appearance: none;
+  margin: 0;
+  background: transparent;
+}
+.vol::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-ink) var(--vol),
+    oklch(100% 0 0 / 0.25) var(--vol)
+  );
+}
+.vol::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: var(--color-ink);
+}
+.vol::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: oklch(100% 0 0 / 0.25);
+}
+.vol::-moz-range-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-ink);
+}
+.vol::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--color-ink);
+}
