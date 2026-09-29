@@ -1,4 +1,5 @@
-// 사용: pnpm upload <slug> [subdir]
+// 사용: pnpm upload <slug> [subdir] [--public]
+// 기본은 private 버킷(HLS). --public 이면 public 버킷(포스터·자막·트레일러)
 import { createClient } from "@supabase/supabase-js";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -42,8 +43,10 @@ async function walk(dir: string): Promise<string[]> {
 }
 
 async function main() {
-  const slug = process.argv[2];
-  const subdir = process.argv[3];
+  const isPublic = process.argv.includes("--public");
+  const [slug, subdir] = process.argv
+    .slice(2)
+    .filter((a) => !a.startsWith("--"));
   if (!slug || !SLUG_RE.test(slug) || (subdir && !SLUG_RE.test(subdir))) {
     console.error(
       "usage: pnpm upload <slug> [subdir]  (lowercase alnum + hyphen)",
@@ -53,7 +56,9 @@ async function main() {
 
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   const secret = requireEnv("SUPABASE_SECRET_KEY");
-  const bucket = requireEnv("SUPABASE_STORAGE_BUCKET");
+  const bucket = requireEnv(
+    isPublic ? "SUPABASE_PUBLIC_BUCKET" : "SUPABASE_PRIVATE_BUCKET",
+  );
 
   const root = path.resolve(process.cwd(), "media", "hls");
   const localDir = path.resolve(root, slug, subdir ?? "");
@@ -77,7 +82,11 @@ async function main() {
     );
     process.exit(1);
   }
-  if (!subdir && !files.some((f) => path.basename(f) === "master.m3u8")) {
+  if (
+    !subdir &&
+    !isPublic &&
+    !files.some((f) => path.basename(f) === "master.m3u8")
+  ) {
     console.error("master.m3u8 not found. run encode first.");
     process.exit(1);
   }
@@ -118,12 +127,7 @@ async function main() {
   }
 
   console.log(`\nuploaded ${total} files`);
-  if (!subdir) {
-    const { data } = sb.storage
-      .from(bucket)
-      .getPublicUrl(`${slug}/master.m3u8`);
-    console.log(`master: ${data.publicUrl}`);
-  }
+  console.log(`bucket: ${bucket}`);
 }
 
 main().catch((e) => {

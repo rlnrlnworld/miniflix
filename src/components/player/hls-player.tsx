@@ -14,6 +14,8 @@ export type SubtitleTrack = {
 type Props = {
   title: string;
   description?: string | null;
+  mode?: "full" | "trailer";
+  loginHref?: string;
   src: string;
   poster?: string;
   subtitles: SubtitleTrack[];
@@ -28,6 +30,7 @@ type Menu = "quality" | "subtitle" | "rate" | null;
 const AUTO = -1;
 const HIDE_DELAY = 2500;
 const INFO_DELAY = 100;
+const RELOAD_COOLDOWN_MS = 30_000;
 const SUBTITLE_PRIORITY = ["ko", "en"];
 
 function defaultSubtitle(subtitles: SubtitleTrack[]): string {
@@ -69,6 +72,8 @@ export function HlsPlayer({
   poster,
   subtitles,
   startAt,
+  mode = "full",
+  loginHref = "/login",
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -97,6 +102,7 @@ export function HlsPlayer({
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [rate, setRate] = useState(1);
+  const [ended, setEnded] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -130,9 +136,25 @@ export function HlsPlayer({
               bitrate: l.bitrate,
             });
         });
+        let lastReload = 0;
+        const reloadSigned = () => {
+          const now = Date.now();
+          if (now - lastReload < RELOAD_COOLDOWN_MS) return false;
+          lastReload = now;
+          const t = video.currentTime;
+          const wasPaused = video.paused;
+          hls.once(Hls.Events.MANIFEST_PARSED, () => {
+            video.currentTime = t;
+            if (!wasPaused) video.play().catch(() => {});
+          });
+          hls.loadSource(src);
+          return true;
+        };
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            const code = data.response?.code;
+            if ((code === 400 || code === 403) && reloadSigned()) return;
             hls.startLoad();
             return;
           }
@@ -190,6 +212,11 @@ export function HlsPlayer({
     const onPlaying = () => setWaiting(false);
     const onVolume = () => setMuted(video.muted);
     const onRate = () => setRate(video.playbackRate);
+    const onEnded = () => {
+      setEnded(true);
+      setInfoVisible(false);
+    };
+    const onSeeking = () => setEnded(false);
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("durationchange", onDuration);
     video.addEventListener("progress", onProgress);
@@ -199,6 +226,8 @@ export function HlsPlayer({
     video.addEventListener("playing", onPlaying);
     video.addEventListener("volumechange", onVolume);
     video.addEventListener("ratechange", onRate);
+    video.addEventListener("ended", onEnded);
+    video.addEventListener("seeking", onSeeking);
     const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onFs);
     return () => {
@@ -211,6 +240,8 @@ export function HlsPlayer({
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("volumechange", onVolume);
       video.removeEventListener("ratechange", onRate);
+      video.removeEventListener("ended", onEnded);
+      video.removeEventListener("seeking", onSeeking);
       document.removeEventListener("fullscreenchange", onFs);
     };
   }, []);
@@ -297,10 +328,10 @@ export function HlsPlayer({
   }, [menu]);
 
   useEffect(() => {
-    if (!paused || chromeVisible || status !== "ready") return;
+    if (!paused || ended || chromeVisible || status !== "ready") return;
     const t = window.setTimeout(() => setInfoVisible(true), INFO_DELAY);
     return () => window.clearTimeout(t);
-  }, [paused, chromeVisible, status]);
+  }, [paused, ended, chromeVisible, status]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -336,9 +367,11 @@ export function HlsPlayer({
   }, [togglePlay, seekBy, toggleMute, toggleFullscreen, showChrome]);
 
   const levelsDesc = [...levels].sort((a, b) => b.height - a.height);
-  const chromeClass = chromeVisible
-    ? "opacity-100"
-    : "pointer-events-none opacity-0";
+  const trailerEnded = mode === "trailer" && ended;
+  const chromeClass =
+    chromeVisible && !trailerEnded
+      ? "opacity-100"
+      : "pointer-events-none opacity-0";
   const chromeTransition =
     "transition-opacity duration-[var(--dur-slow)] ease-[var(--ease-out)]";
   const progress = duration ? (currentTime / duration) * 100 : 0;
@@ -347,7 +380,7 @@ export function HlsPlayer({
   return (
     <div
       ref={rootRef}
-      className={`relative flex h-dvh w-full flex-col bg-black ${chromeVisible ? "" : "cursor-none"}`}
+      className={`relative flex h-dvh w-full flex-col bg-black ${chromeVisible || trailerEnded ? "" : "cursor-none"}`}
       onMouseMove={showChrome}
       onTouchStart={showChrome}
       onPointerDown={(e) => {
@@ -389,6 +422,14 @@ export function HlsPlayer({
         <h1 className="text-ink min-w-0 flex-1 truncate text-base font-semibold sm:text-lg">
           {title}
         </h1>
+        {mode === "trailer" && (
+          <Link
+            href={loginHref}
+            className="bg-accent inline-flex h-10 shrink-0 items-center rounded-full px-4 text-sm font-semibold text-white transition-[filter] duration-[var(--dur-base)] hover:brightness-110 active:translate-y-px"
+          >
+            로그인하여 전체 보기
+          </Link>
+        )}
       </header>
 
       {(status === "loading" || waiting) && status !== "error" && (
@@ -418,18 +459,30 @@ export function HlsPlayer({
           </p>
         )}
         <p className="text-muted mt-6 text-sm">일시정지됨</p>
+        {mode === "trailer" && (
+          <Link
+            href={loginHref}
+            className={`bg-accent mt-6 inline-flex h-12 w-fit items-center self-start rounded-full px-6 text-base font-semibold text-white transition-[filter] duration-[var(--dur-base)] hover:brightness-110 active:translate-y-px ${infoVisible ? "pointer-events-auto" : ""}`}
+          >
+            로그인하여 전체 보기
+          </Link>
+        )}
       </div>
 
-      {status === "ready" && paused && !waiting && !infoVisible && (
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label="재생"
-          className="text-ink hover:bg-paper-3/90 absolute top-1/2 left-1/2 flex size-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 backdrop-blur transition-[background-color,transform] duration-[var(--dur-base)] active:scale-95"
-        >
-          <Icon name="play" size={36} />
-        </button>
-      )}
+      {status === "ready" &&
+        paused &&
+        !waiting &&
+        !infoVisible &&
+        !trailerEnded && (
+          <button
+            type="button"
+            onClick={togglePlay}
+            aria-label="재생"
+            className="text-ink hover:bg-paper-3/90 absolute top-1/2 left-1/2 flex size-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 backdrop-blur transition-[background-color,transform] duration-[var(--dur-base)] active:scale-95"
+          >
+            <Icon name="play" size={36} />
+          </button>
+        )}
 
       <div
         className={`absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-linear-to-t from-black/85 to-transparent px-4 pt-12 pb-4 ${chromeTransition} ${chromeClass}`}
@@ -497,7 +550,7 @@ export function HlsPlayer({
 
           <div className="flex-1" />
 
-          {engine === "hls.js" && levels.length > 0 && (
+          {engine === "hls.js" && levels.length > 1 && (
             <MenuButton
               id={`${menuId}-q`}
               label={
@@ -605,6 +658,41 @@ export function HlsPlayer({
           </IconButton>
         </div>
       </div>
+
+      {mode === "trailer" && ended && (
+        <div
+          role="dialog"
+          aria-labelledby="trailer-end-title"
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-black/85 px-6 text-center"
+        >
+          <h2
+            id="trailer-end-title"
+            className="text-ink max-w-lg text-2xl font-bold break-keep sm:text-3xl"
+          >
+            로그인하고 {title} 전체를 감상하세요
+          </h2>
+          <div className="mt-2 flex flex-wrap justify-center gap-3">
+            <Link
+              href={loginHref}
+              className="bg-accent inline-flex h-12 items-center rounded-full px-6 text-base font-semibold text-white transition-[filter] duration-[var(--dur-base)] hover:brightness-110 active:translate-y-px"
+            >
+              로그인하고 전체 보기
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                const v = videoRef.current;
+                if (!v) return;
+                v.currentTime = 0;
+                v.play();
+              }}
+              className="text-ink hover:bg-paper-3 inline-flex h-12 items-center rounded-full border border-white/20 px-6 text-base font-medium transition-colors duration-[var(--dur-base)]"
+            >
+              다시 보기
+            </button>
+          </div>
+        </div>
+      )}
 
       {status === "error" && (
         <div

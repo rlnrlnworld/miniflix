@@ -16,6 +16,7 @@ model Content {
   masterPath    String   @db.VarChar(255)
   posterPath    String?  @db.VarChar(255)
   thumbnailPath String?  @db.VarChar(255)
+  trailerPath   String?  @db.VarChar(255)
   createdAt     DateTime @default(now()) @db.Timestamptz()
   updatedAt     DateTime @updatedAt @db.Timestamptz()
 

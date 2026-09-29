@@ -19,6 +19,7 @@ const contents = [
     masterPath: "bbb/master.m3u8",
     posterPath: "bbb/poster.webp",
     thumbnailPath: "bbb/thumb.webp",
+    trailerPath: "bbb-trailer/master.m3u8",
     subtitles: [
       {
         lang: "en",
