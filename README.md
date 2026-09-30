@@ -1,7 +1,7 @@
 # miniflix
 
 OTT 스트리밍의 핵심 구조를 직접 구현해 보는 소형 Netflix 형태의 토이 프로젝트.
-MP4 원본 → FFmpeg → HLS(1080p/720p/480p) → hls.js 재생 → ABR 화질 전환 → WebVTT 자막 → 시청 기록 저장까지 한 흐름으로 다룬다.
+MP4 원본 → FFmpeg → HLS(1080p/720p/480p) → hls.js 재생 → ABR 화질 전환 → WebVTT 자막 → 시크 썸네일 → 시청 기록 저장까지 한 흐름으로 다룬다.
 
 배포: https://miniflix-chi.vercel.app
 
@@ -16,6 +16,7 @@ MP4 원본 → FFmpeg → HLS(1080p/720p/480p) → hls.js 재생 → ABR 화질 
 ```
 scripts/encode.sh          MP4 → 3렌디션 HLS
 scripts/encode-trailer.sh  트레일러 → 720p 단일 렌디션
+scripts/thumbs.sh          480p HLS → 시크 썸네일 스프라이트(webp) + thumbs.vtt
 scripts/upload.mts         media/hls/<slug> → Supabase Storage (--public 옵션)
 prisma/schema.prisma       Content · Subtitle · Profile · WatchHistory
 prisma/seed.mts            콘텐츠 시드
@@ -53,6 +54,8 @@ bash scripts/encode.sh media/source/<name>.mp4 <slug>
 pnpm upload <slug>                      # private 버킷
 pnpm upload <slug> subs --public        # 자막 vtt
 pnpm upload <slug>-trailer --public     # 트레일러
+bash scripts/thumbs.sh <slug>           # 시크 썸네일 (cwebp 필요)
+pnpm upload <slug> thumbs --public
 # prisma/seed.mts 에 항목 추가 후
 pnpm db:seed
 ```

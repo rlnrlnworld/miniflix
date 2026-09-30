@@ -20,6 +20,7 @@ const contents = [
     posterPath: "bbb/poster.webp",
     thumbnailPath: "bbb/thumb.webp",
     trailerPath: "bbb-trailer/master.m3u8",
+    thumbsVttPath: "bbb/thumbs/thumbs.vtt",
     subtitles: [
       {
         lang: "en",
@@ -45,6 +46,7 @@ const contents = [
     posterPath: "spring/poster.webp",
     thumbnailPath: "spring/thumb.webp",
     trailerPath: "spring-trailer/master.m3u8",
+    thumbsVttPath: "spring/thumbs/thumbs.vtt",
     subtitles: [
       {
         lang: "en",

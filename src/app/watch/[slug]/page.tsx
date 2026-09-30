@@ -88,6 +88,11 @@ export default async function WatchPage({
         loginHref={loginHref}
         historyContentId={content.id}
         startAt={startAt}
+        thumbnails={
+          !trailerOnly && content.thumbsVttPath
+            ? storagePublicUrl(content.thumbsVttPath)
+            : undefined
+        }
         poster={
           content.posterPath ? storagePublicUrl(content.posterPath) : undefined
         }

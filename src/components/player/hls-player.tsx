@@ -6,6 +6,8 @@ import type Hls from "hls.js";
 import { storageAuthenticatedPrefix } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/client";
 import { supabaseEnv } from "@/lib/supabase/env";
+import { SeekPreview } from "./seek-preview";
+import { useThumbnails } from "./use-thumbnails";
 import { useWatchProgress } from "./use-watch-progress";
 
 export type SubtitleTrack = {
@@ -25,7 +27,11 @@ type Props = {
   poster?: string;
   subtitles: SubtitleTrack[];
   startAt?: number;
+  /** 시크 썸네일 VTT(#xywh) URL. 없으면 프리뷰에 시각만 표시. */
+  thumbnails?: string;
 };
+
+type SeekHover = { time: number; x: number; width: number };
 
 type Level = { index: number; height: number; bitrate: number };
 type Status = "loading" | "ready" | "error";
@@ -122,6 +128,7 @@ export function HlsPlayer({
   mode = "full",
   loginHref = "/login",
   historyContentId,
+  thumbnails,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -155,8 +162,27 @@ export function HlsPlayer({
   const [rate, setRate] = useState(1);
   const [ended, setEnded] = useState(false);
   const [mutedHint, setMutedHint] = useState(false);
+  const [seekHover, setSeekHover] = useState<SeekHover | null>(null);
+  const { lookup: lookupThumb } = useThumbnails(thumbnails);
 
   useWatchProgress(videoRef, mode === "full" ? historyContentId : undefined);
+
+  // 마우스는 호버 중, 터치는 드래그 중에만 프리뷰.
+  const updateSeekHover = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!duration) return;
+      if (e.pointerType !== "mouse" && e.buttons === 0) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+      setSeekHover({
+        time: (x / rect.width) * duration,
+        x,
+        width: rect.width,
+      });
+    },
+    [duration],
+  );
+  const clearSeekHover = useCallback(() => setSeekHover(null), []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -600,7 +626,25 @@ export function HlsPlayer({
       <div
         className={`absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-linear-to-t from-black/85 to-transparent px-4 pt-12 pb-4 ${chromeTransition} ${chromeClass}`}
       >
-        <div className="group relative h-6 w-full">
+        <div
+          className="group relative h-6 w-full"
+          onPointerMove={updateSeekHover}
+          onPointerDown={updateSeekHover}
+          onPointerUp={(e) => {
+            if (e.pointerType !== "mouse") clearSeekHover();
+          }}
+          onPointerLeave={clearSeekHover}
+          onPointerCancel={clearSeekHover}
+        >
+          {seekHover && status === "ready" && (
+            <SeekPreview
+              time={seekHover.time}
+              x={seekHover.x}
+              width={seekHover.width}
+              cue={lookupThumb(seekHover.time)}
+              label={formatTime(seekHover.time)}
+            />
+          )}
           <div className="bg-ink/20 absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full">
             <div
               className="bg-ink/35 absolute inset-y-0 left-0"
