@@ -10,14 +10,31 @@ export type ContentCardData = {
   thumbnailPath: string | null;
   posterPath: string | null;
   progress?: number;
+  /** 기본 링크(/title 또는 /watch) 대신 쓸 경로. 시리즈 카드용. */
+  href?: string;
+  /** 길이 대신 보여줄 보조 텍스트. 예: "2화 · 2분", "에피소드 2개". */
+  meta?: string;
 };
+
+/** 에피소드면 "시리즈명 N화 · 길이", 아니면 undefined(기본 길이 표시). */
+export function episodeMeta(c: {
+  durationSec: number;
+  episodeNo: number | null;
+  series: { title: string } | null;
+}): string | undefined {
+  if (!c.series || c.episodeNo === null) return undefined;
+  return `${c.series.title} ${c.episodeNo}화 · ${formatDuration(c.durationSec)}`;
+}
 
 export function ContentCard({ content }: { content: ContentCardData }) {
   const image = content.thumbnailPath ?? content.posterPath;
   const continuing = content.progress !== undefined;
   return (
     <Link
-      href={continuing ? `/watch/${content.slug}` : `/title/${content.slug}`}
+      href={
+        content.href ??
+        (continuing ? `/watch/${content.slug}` : `/title/${content.slug}`)
+      }
       scroll={false}
       className="group block w-56 shrink-0 snap-start sm:w-auto"
       aria-label={
@@ -71,7 +88,7 @@ export function ContentCard({ content }: { content: ContentCardData }) {
         {content.title}
       </p>
       <p className="text-muted text-xs">
-        {formatDuration(content.durationSec)}
+        {content.meta ?? formatDuration(content.durationSec)}
       </p>
     </Link>
   );

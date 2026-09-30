@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ContentCard } from "@/components/content/content-card";
+import { ContentCard, episodeMeta } from "@/components/content/content-card";
 import { prisma } from "@/lib/prisma";
 
 const MAX_QUERY = 100;
@@ -31,11 +31,17 @@ export default async function SearchPage({
             OR: [
               { title: { contains: t, mode: "insensitive" as const } },
               { description: { contains: t, mode: "insensitive" as const } },
+              {
+                series: {
+                  title: { contains: t, mode: "insensitive" as const },
+                },
+              },
             ],
           })),
         },
         orderBy: { createdAt: "desc" },
         take: 48,
+        include: { series: { select: { title: true } } },
       })
     : [];
 
@@ -55,7 +61,7 @@ export default async function SearchPage({
                 <ul className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   {results.map((c) => (
                     <li key={c.slug}>
-                      <ContentCard content={c} />
+                      <ContentCard content={{ ...c, meta: episodeMeta(c) }} />
                     </li>
                   ))}
                 </ul>

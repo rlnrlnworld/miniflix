@@ -1,3 +1,4 @@
+import { episodeMeta } from "@/components/content/content-card";
 import { ContentRow } from "@/components/content/content-row";
 import { Hero } from "@/components/content/hero";
 import { getUser } from "@/lib/auth";
@@ -11,10 +12,15 @@ const RESUME_MIN_SEC = 30;
 
 export default async function HomePage() {
   const user = await getUser();
-  const [contents, histories] = await Promise.all([
+  const [contents, seriesList, histories] = await Promise.all([
     prisma.content.findMany({
+      where: { seriesId: null },
       orderBy: { createdAt: "desc" },
       include: { subtitles: { select: { lang: true, label: true } } },
+    }),
+    prisma.series.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { episodes: { select: { durationSec: true } } },
     }),
     user
       ? prisma.watchHistory.findMany({
@@ -25,7 +31,9 @@ export default async function HomePage() {
           },
           orderBy: { lastWatchedAt: "desc" },
           take: 12,
-          include: { content: true },
+          include: {
+            content: { include: { series: { select: { title: true } } } },
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -33,7 +41,21 @@ export default async function HomePage() {
   const continueItems = histories.map((h) => ({
     ...h.content,
     progress: h.positionSec / h.content.durationSec,
+    meta: episodeMeta(h.content),
   }));
+  const seriesCards = seriesList.map((s) => ({
+    slug: s.slug,
+    title: s.title,
+    durationSec: s.episodes.reduce((a, e) => a + e.durationSec, 0),
+    thumbnailPath: s.thumbnailPath,
+    posterPath: s.posterPath,
+    href: `/title/${s.slug}`,
+    meta: `에피소드 ${s.episodes.length}개`,
+    createdAt: s.createdAt,
+  }));
+  const catalog = [...contents, ...seriesCards].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -47,10 +69,8 @@ export default async function HomePage() {
       },
       {
         "@type": "ItemList",
-        itemListElement: contents.map((c, i) => ({
-          "@type": "ListItem",
-          position: i + 1,
-          item: {
+        itemListElement: [
+          ...contents.map((c) => ({
             "@type": "VideoObject",
             name: c.title,
             description: c.description ?? undefined,
@@ -59,8 +79,18 @@ export default async function HomePage() {
               ? storagePublicUrl(c.thumbnailPath)
               : undefined,
             url: new URL(`/watch/${c.slug}`, siteUrl()).toString(),
-          },
-        })),
+          })),
+          ...seriesList.map((s) => ({
+            "@type": "TVSeries",
+            name: s.title,
+            description: s.description ?? undefined,
+            numberOfEpisodes: s.episodes.length,
+            thumbnailUrl: s.thumbnailPath
+              ? storagePublicUrl(s.thumbnailPath)
+              : undefined,
+            url: new URL(`/title/${s.slug}`, siteUrl()).toString(),
+          })),
+        ].map((item, i) => ({ "@type": "ListItem", position: i + 1, item })),
       },
     ],
   };
@@ -77,7 +107,7 @@ export default async function HomePage() {
         )}
         <div className="relative -mt-6 flex flex-col gap-10 sm:-mt-10">
           <ContentRow title="이어보기" items={continueItems} />
-          <ContentRow title="지금 볼 수 있는 콘텐츠" items={contents} />
+          <ContentRow title="지금 볼 수 있는 콘텐츠" items={catalog} />
         </div>
       </main>
       <script

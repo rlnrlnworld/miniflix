@@ -10,6 +10,10 @@ const NATIVE_SIGN_TTL_SEC = 10 * 60;
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SEGMENT_RE = /^[\w.-]+\.(ts|m4s|mp4)$/;
 const VARIANT_RE = /^[\w.-]+\/index\.m3u8$/;
+// #EXT-X-MAP:URI="init.mp4" (fMP4 초기화 세그먼트) — 미디어 세그먼트와 같이 서명/인증 URL 로 치환.
+const MAP_RE = /^(#EXT-X-MAP:.*URI=")([\w.-]+\.(?:mp4|m4s))(".*)$/;
+// #EXT-X-MEDIA:TYPE=AUDIO,...,URI="audio/index.m3u8" (분리 오디오 렌디션) — 상대경로라 이 라우트로 돌아온다.
+const MEDIA_RE = /^(#EXT-X-MEDIA:.*URI=")([\w.-]+\/index\.m3u8)(".*)$/;
 
 function admin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -75,10 +79,19 @@ export async function GET(
       return new NextResponse("bad playlist", { status: 502 });
     }
     body = lines
-      .map((l) => (isEntry(l) && native ? `${l.trim()}?native=1` : l))
+      .map((l) => {
+        if (!native) return l;
+        if (isEntry(l)) return `${l.trim()}?native=1`;
+        const m = MEDIA_RE.exec(l);
+        return m ? `${m[1]}${m[2]}?native=1${m[3]}` : l;
+      })
       .join("\n");
   } else {
     const segments = lines.filter(isEntry).map((l) => l.trim());
+    for (const l of lines) {
+      const m = MAP_RE.exec(l);
+      if (m) segments.push(m[2]);
+    }
     if (segments.some((s) => !SEGMENT_RE.test(s))) {
       return new NextResponse("bad playlist", { status: 502 });
     }
@@ -101,7 +114,11 @@ export async function GET(
       );
     }
     body = lines
-      .map((l) => (isEntry(l) ? (map.get(l.trim()) ?? l) : l))
+      .map((l) => {
+        if (isEntry(l)) return map.get(l.trim()) ?? l;
+        const m = MAP_RE.exec(l);
+        return m ? `${m[1]}${map.get(m[2]) ?? m[2]}${m[3]}` : l;
+      })
       .join("\n");
   }
 

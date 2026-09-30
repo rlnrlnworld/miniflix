@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { TitleData } from "@/lib/content";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatRenditions } from "@/lib/format";
 import { storagePublicUrl } from "@/lib/storage";
 
 function formatClock(sec: number) {
@@ -43,12 +43,27 @@ export function TitleDetail({
           aria-hidden="true"
           className="from-paper-2 absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t to-transparent"
         />
-        <h2
-          id={titleId}
-          className="text-ink absolute bottom-5 left-6 max-w-[80%] text-3xl font-bold tracking-tight [overflow-wrap:anywhere] sm:bottom-8 sm:left-8 sm:text-5xl"
-        >
-          {content.title}
-        </h2>
+        <div className="absolute bottom-5 left-6 max-w-[80%] sm:bottom-8 sm:left-8">
+          {content.series && content.episodeNo !== null && (
+            <p className="text-ink-2 mb-1 text-sm font-medium sm:text-base">
+              <Link
+                href={`/title/${content.series.slug}`}
+                scroll={false}
+                className="hover:text-ink underline-offset-4 transition-colors duration-[var(--dur-base)] hover:underline"
+              >
+                {content.series.title}
+              </Link>
+              <span aria-hidden="true"> · </span>
+              {content.episodeNo}화
+            </p>
+          )}
+          <h2
+            id={titleId}
+            className="text-ink text-3xl font-bold tracking-tight [overflow-wrap:anywhere] sm:text-5xl"
+          >
+            {content.title}
+          </h2>
+        </div>
       </div>
 
       <div className="flex flex-col gap-6 px-6 pt-4 pb-8 sm:px-8">
@@ -107,8 +122,14 @@ export function TitleDetail({
             <dd className="text-ink-2">
               {formatDuration(content.durationSec)}
             </dd>
-            <dt>화질</dt>
-            <dd className="text-ink-2">1080p · 720p · 480p</dd>
+            {formatRenditions(content.renditions) && (
+              <>
+                <dt>화질</dt>
+                <dd className="text-ink-2">
+                  {formatRenditions(content.renditions)}
+                </dd>
+              </>
+            )}
             <dt>자막</dt>
             <dd className="text-ink-2">
               {content.subtitles.length

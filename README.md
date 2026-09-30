@@ -14,11 +14,12 @@ MP4 원본 → FFmpeg → HLS(1080p/720p/480p) → hls.js 재생 → ABR 화질 
 ## 구조
 
 ```
-scripts/encode.sh          MP4 → 3렌디션 HLS
+scripts/encode.sh          MP4 → 3렌디션 HLS (TS, 오디오 muxed)
+scripts/encode-fmp4.sh     MP4 → fMP4(CMAF) HLS, 비디오/오디오 렌디션 분리 (--ladder 1080|720)
 scripts/encode-trailer.sh  트레일러 → 720p 단일 렌디션
 scripts/thumbs.sh          480p HLS → 시크 썸네일 스프라이트(webp) + thumbs.vtt
 scripts/upload.mts         media/hls/<slug> → Supabase Storage (--public 옵션)
-prisma/schema.prisma       Content · Subtitle · Profile · WatchHistory
+prisma/schema.prisma       Content · Series · Subtitle · Profile · WatchHistory
 prisma/seed.mts            콘텐츠 시드
 src/app/watch/[slug]       재생 페이지 (로그인: 풀버전, 비로그인: 트레일러)
 src/app/api/stream         세션 확인 후 세그먼트 URL을 재작성한 HLS 플레이리스트
@@ -50,7 +51,8 @@ pnpm dev
 ## 콘텐츠 추가
 
 ```bash
-bash scripts/encode.sh media/source/<name>.mp4 <slug>
+bash scripts/encode.sh media/source/<name>.mp4 <slug>          # TS 3렌디션
+bash scripts/encode-fmp4.sh media/source/<name>.mp4 <slug> --ladder 720   # fMP4 + 오디오 분리
 pnpm upload <slug>                      # private 버킷
 pnpm upload <slug> subs --public        # 자막 vtt
 pnpm upload <slug>-trailer --public     # 트레일러
@@ -60,7 +62,10 @@ pnpm upload <slug> thumbs --public
 pnpm db:seed
 ```
 
+시리즈(에피소드 묶음)는 `prisma/seed.mts` 의 `series` 배열에 항목을 추가하고, 각 에피소드 콘텐츠에 `seriesSlug`·`episodeNo` 를 넣는다. 시리즈 slug 는 `/title/[slug]` 를 콘텐츠와 공유하므로 겹치지 않게.
+
 ## 콘텐츠 출처
 
 - Big Buck Bunny — Blender Foundation, CC BY 3.0. 캡션: demuxed/big-buck-captions (CC BY 3.0)
 - Spring — Blender Animation Studio, CC BY 4.0. 캡션: Wikimedia Commons TimedText (CC BY 4.0)
+- Caminandes 2: Gran Dillama · 3: Llamigos — Blender Foundation, CC BY 3.0. 트레일러는 Caminandes 1: Llama Drama

@@ -9,6 +9,18 @@ if (!url) {
 
 const prisma = new PrismaClient({ adapter: new PrismaPg(url) });
 
+const series = [
+  {
+    slug: "caminandes",
+    title: "Caminandes",
+    description:
+      "파타고니아의 라마 코로가 매번 먹을 것을 찾다 곤경에 빠지는 이야기. Blender Foundation의 오픈 무비 연작.",
+    posterPath: "caminandes/poster.webp",
+    thumbnailPath: "caminandes/thumb.webp",
+    trailerPath: "caminandes-trailer/master.m3u8",
+  },
+];
+
 const contents = [
   {
     slug: "bbb",
@@ -21,6 +33,7 @@ const contents = [
     thumbnailPath: "bbb/thumb.webp",
     trailerPath: "bbb-trailer/master.m3u8",
     thumbsVttPath: "bbb/thumbs/thumbs.vtt",
+    renditions: [1080, 720, 480],
     subtitles: [
       {
         lang: "en",
@@ -47,6 +60,7 @@ const contents = [
     thumbnailPath: "spring/thumb.webp",
     trailerPath: "spring-trailer/master.m3u8",
     thumbsVttPath: "spring/thumbs/thumbs.vtt",
+    renditions: [1080, 720, 480],
     subtitles: [
       {
         lang: "en",
@@ -68,14 +82,65 @@ const contents = [
       },
     ],
   },
+  {
+    slug: "caminandes-2",
+    title: "Gran Dillama",
+    description:
+      "울타리 너머의 풀을 노리던 코로가 아르마딜로에게서 얻은 영감으로 전기 울타리에 도전한다.",
+    durationSec: 146,
+    masterPath: "caminandes-2/master.m3u8",
+    posterPath: "caminandes-2/images/poster.webp",
+    thumbnailPath: "caminandes-2/images/thumb.webp",
+    trailerPath: "caminandes-trailer/master.m3u8",
+    thumbsVttPath: "caminandes-2/thumbs/thumbs.vtt",
+    renditions: [720, 480],
+    seriesSlug: "caminandes",
+    episodeNo: 2,
+    subtitles: [],
+  },
+  {
+    slug: "caminandes-3",
+    title: "Llamigos",
+    description:
+      "겨울 파타고니아, 먹을 것이 귀해진 코로가 마지막 남은 붉은 열매를 두고 아기 펭귄 오티와 맞선다.",
+    durationSec: 150,
+    masterPath: "caminandes-3/master.m3u8",
+    posterPath: "caminandes-3/images/poster.webp",
+    thumbnailPath: "caminandes-3/images/thumb.webp",
+    trailerPath: "caminandes-trailer/master.m3u8",
+    thumbsVttPath: "caminandes-3/thumbs/thumbs.vtt",
+    renditions: [720, 480],
+    seriesSlug: "caminandes",
+    episodeNo: 3,
+    subtitles: [],
+  },
 ];
 
 async function main() {
-  for (const { subtitles, ...c } of contents) {
+  const seriesId = new Map<string, string>();
+  for (const s of series) {
+    const row = await prisma.series.upsert({
+      where: { slug: s.slug },
+      update: s,
+      create: s,
+    });
+    seriesId.set(row.slug, row.id);
+    console.log(`series ${row.slug} (${row.id})`);
+  }
+  for (const { subtitles, seriesSlug, episodeNo, ...c } of contents as Array<
+    (typeof contents)[number] & { seriesSlug?: string; episodeNo?: number }
+  >) {
+    const data = {
+      ...c,
+      seriesId: seriesSlug ? (seriesId.get(seriesSlug) ?? null) : null,
+      episodeNo: episodeNo ?? null,
+    };
+    if (seriesSlug && !data.seriesId)
+      throw new Error(`no series: ${seriesSlug}`);
     const row = await prisma.content.upsert({
       where: { slug: c.slug },
-      update: c,
-      create: c,
+      update: data,
+      create: data,
     });
     console.log(`content ${row.slug} (${row.id})`);
     for (const sub of subtitles) {

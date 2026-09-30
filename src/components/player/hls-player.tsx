@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type Hls from "hls.js";
 import { storageAuthenticatedPrefix } from "@/lib/storage";
@@ -29,7 +30,11 @@ type Props = {
   startAt?: number;
   /** 시크 썸네일 VTT(#xywh) URL. 없으면 프리뷰에 시각만 표시. */
   thumbnails?: string;
+  /** 시리즈 다음 화. 재생이 끝나면 카운트다운 후 자동 이동. */
+  nextEpisode?: { href: string; title: string };
 };
+
+const NEXT_COUNTDOWN_SEC = 5;
 
 type SeekHover = { time: number; x: number; width: number };
 
@@ -129,7 +134,13 @@ export function HlsPlayer({
   loginHref = "/login",
   historyContentId,
   thumbnails,
+  nextEpisode,
 }: Props) {
+  const router = useRouter();
+  const nextEpisodeRef = useRef(nextEpisode);
+  useEffect(() => {
+    nextEpisodeRef.current = nextEpisode;
+  }, [nextEpisode]);
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -163,6 +174,8 @@ export function HlsPlayer({
   const [ended, setEnded] = useState(false);
   const [mutedHint, setMutedHint] = useState(false);
   const [seekHover, setSeekHover] = useState<SeekHover | null>(null);
+  // null: 카운트다운 없음. 숫자: 남은 초.
+  const [nextIn, setNextIn] = useState<number | null>(null);
   const { lookup: lookupThumb } = useThumbnails(thumbnails);
 
   useWatchProgress(videoRef, mode === "full" ? historyContentId : undefined);
@@ -315,8 +328,12 @@ export function HlsPlayer({
     const onEnded = () => {
       setEnded(true);
       setInfoVisible(false);
+      if (nextEpisodeRef.current) setNextIn(NEXT_COUNTDOWN_SEC);
     };
-    const onSeeking = () => setEnded(false);
+    const onSeeking = () => {
+      setEnded(false);
+      setNextIn(null);
+    };
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("durationchange", onDuration);
     video.addEventListener("progress", onProgress);
@@ -381,6 +398,19 @@ export function HlsPlayer({
       window.removeEventListener("resize", apply);
     };
   }, [chromeVisible, subtitle, status]);
+
+  useEffect(() => {
+    if (nextIn === null || !nextEpisode) return;
+    if (nextIn <= 0) {
+      router.push(nextEpisode.href);
+      return;
+    }
+    const t = window.setTimeout(
+      () => setNextIn((n) => (n === null ? null : n - 1)),
+      1000,
+    );
+    return () => window.clearTimeout(t);
+  }, [nextIn, nextEpisode, router]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
@@ -855,6 +885,34 @@ export function HlsPlayer({
           <Icon name="muted" size={18} />
           음소거 해제
         </button>
+      )}
+
+      {mode === "full" && ended && nextEpisode && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-black/75 px-6 text-center backdrop-blur-sm">
+          <p className="text-ink-2 text-sm font-medium tracking-wide">
+            {nextIn !== null ? `${nextIn}초 후 다음 화 재생` : "다음 화"}
+          </p>
+          <h2 className="text-ink max-w-xl text-2xl font-bold tracking-tight [overflow-wrap:anywhere] sm:text-4xl">
+            {nextEpisode.title}
+          </h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link
+              href={nextEpisode.href}
+              className="bg-ink text-paper hover:bg-ink-2 inline-flex h-12 items-center gap-2 rounded-full px-6 text-base font-semibold transition-colors duration-[var(--dur-base)] active:translate-y-px"
+            >
+              <Icon name="play" size={20} /> 지금 재생
+            </Link>
+            {nextIn !== null && (
+              <button
+                type="button"
+                onClick={() => setNextIn(null)}
+                className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center rounded-full border border-white/20 px-6 text-base font-medium transition-colors duration-[var(--dur-base)]"
+              >
+                취소
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {mode === "trailer" && ended && (

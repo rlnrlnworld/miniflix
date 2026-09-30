@@ -10,6 +10,8 @@ const CONCURRENCY = 8;
 const MIME: Record<string, string> = {
   ".m3u8": "application/vnd.apple.mpegurl",
   ".ts": "video/mp2t",
+  ".m4s": "video/iso.segment",
+  ".mp4": "video/mp4",
   ".vtt": "text/vtt",
   ".webp": "image/webp",
   ".jpg": "image/jpeg",

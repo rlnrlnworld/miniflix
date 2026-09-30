@@ -18,11 +18,33 @@ model Content {
   thumbnailPath String?  @db.VarChar(255)
   trailerPath   String?  @db.VarChar(255)
   thumbsVttPath String?  @db.VarChar(255)
+  /// 인코딩된 렌디션 높이(px). 예: [1080, 720, 480]. 상세 화면 화질 표기용.
+  renditions    Int[]    @default([])
+  seriesId      String?  @db.Uuid
+  episodeNo     Int?
   createdAt     DateTime @default(now()) @db.Timestamptz()
   updatedAt     DateTime @updatedAt @db.Timestamptz()
 
+  series    Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   subtitles Subtitle[]
   histories WatchHistory[]
+
+  @@unique([seriesId, episodeNo])
+}
+
+/// 에피소드 묶음. slug 는 Content.slug 와 같은 네임스페이스(/title/[slug])를 쓰므로 겹치지 않게.
+model Series {
+  id            String   @id @default(uuid()) @db.Uuid
+  slug          String   @unique @db.VarChar(64)
+  title         String   @db.VarChar(200)
+  description   String?
+  posterPath    String?  @db.VarChar(255)
+  thumbnailPath String?  @db.VarChar(255)
+  trailerPath   String?  @db.VarChar(255)
+  createdAt     DateTime @default(now()) @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @db.Timestamptz()
+
+  episodes Content[]
 }
 
 model Subtitle {
