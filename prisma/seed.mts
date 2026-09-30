@@ -34,6 +34,7 @@ const contents = [
     trailerPath: "bbb-trailer/master.m3u8",
     thumbsVttPath: "bbb/thumbs/thumbs.vtt",
     renditions: [1080, 720, 480],
+    creditsStartSec: 495,
     subtitles: [
       {
         lang: "en",
@@ -61,6 +62,7 @@ const contents = [
     trailerPath: "spring-trailer/master.m3u8",
     thumbsVttPath: "spring/thumbs/thumbs.vtt",
     renditions: [1080, 720, 480],
+    creditsStartSec: 417,
     subtitles: [
       {
         lang: "en",
