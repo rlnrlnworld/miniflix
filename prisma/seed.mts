@@ -15,8 +15,8 @@ const series = [
     title: "Caminandes",
     description:
       "파타고니아의 라마 코로가 매번 먹을 것을 찾다 곤경에 빠지는 이야기. Blender Foundation의 오픈 무비 연작.",
-    posterPath: "caminandes/poster.webp",
-    thumbnailPath: "caminandes/thumb.webp",
+    posterPath: "caminandes/poster-v2.webp",
+    thumbnailPath: "caminandes/thumb-v2.webp",
     trailerPath: "caminandes-trailer/master.m3u8",
   },
 ];
@@ -94,6 +94,7 @@ const contents = [
     trailerPath: "caminandes-trailer/master.m3u8",
     thumbsVttPath: "caminandes-2/thumbs/thumbs.vtt",
     renditions: [720, 480],
+    creditsStartSec: 118,
     seriesSlug: "caminandes",
     episodeNo: 2,
     subtitles: [],
@@ -110,6 +111,7 @@ const contents = [
     trailerPath: "caminandes-trailer/master.m3u8",
     thumbsVttPath: "caminandes-3/thumbs/thumbs.vtt",
     renditions: [720, 480],
+    creditsStartSec: 138,
     seriesSlug: "caminandes",
     episodeNo: 3,
     subtitles: [],

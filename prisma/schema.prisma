@@ -20,6 +20,8 @@ model Content {
   thumbsVttPath String?  @db.VarChar(255)
   /// 인코딩된 렌디션 높이(px). 예: [1080, 720, 480]. 상세 화면 화질 표기용.
   renditions    Int[]    @default([])
+  /// 엔딩 크레딧 시작 위치(초). 다음 화 버튼이 뜨는 시점. null 이면 끝 30초 전.
+  creditsStartSec Int?
   seriesId      String?  @db.Uuid
   episodeNo     Int?
   createdAt     DateTime @default(now()) @db.Timestamptz()

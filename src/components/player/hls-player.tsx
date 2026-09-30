@@ -1,13 +1,22 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type Hls from "hls.js";
 import { storageAuthenticatedPrefix } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/client";
 import { supabaseEnv } from "@/lib/supabase/env";
 import { SeekPreview } from "./seek-preview";
+import { TrailerPreview } from "./trailer-preview";
 import { useThumbnails } from "./use-thumbnails";
 import { useWatchProgress } from "./use-watch-progress";
 
@@ -30,18 +39,47 @@ type Props = {
   startAt?: number;
   /** 시크 썸네일 VTT(#xywh) URL. 없으면 프리뷰에 시각만 표시. */
   thumbnails?: string;
-  /** 시리즈 다음 화. 재생이 끝나면 카운트다운 후 자동 이동. */
+  /**
+   * 엔딩 크레딧 시작(초). 이 시점부터 다음 화 버튼(시리즈) 또는 포스트플레이 화면(단편·마지막 화)이 뜨고
+   * NEXT_AUTOPLAY_MS 뒤 자동 이동. null 이면 끝나기 NEXT_PROMPT_BEFORE_END_SEC 전.
+   */
+  creditsStartSec?: number | null;
+  /** 시리즈 다음 화. */
   nextEpisode?: { href: string; title: string };
+  /** 같은 시리즈의 에피소드 목록(회차순). 2개 이상일 때 컨트롤 바에 메뉴가 뜬다. */
+  episodes?: {
+    href: string;
+    title: string;
+    episodeNo: number;
+    durationSec: number;
+    image: string | null;
+    current: boolean;
+  }[];
+  /** 종료 카드. 다음 화 또는 추천 1편. null 이면 "다시 보기"만. */
+  endCard?: {
+    href: string;
+    detailHref: string | null;
+    eyebrow: string;
+    title: string;
+    meta: string;
+    description: string | null;
+    image: string | null;
+    /** 포스트플레이 배경 무음 예고편(HLS). */
+    trailer: string | null;
+    cta: string;
+  } | null;
 };
 
-const NEXT_COUNTDOWN_SEC = 5;
+const NEXT_AUTOPLAY_MS = 10_000;
+const NEXT_PROMPT_BEFORE_END_SEC = 30;
+type NextPrompt = "hidden" | "counting" | "cancelled";
 
 type SeekHover = { time: number; x: number; width: number };
 
 type Level = { index: number; height: number; bitrate: number };
 type Status = "loading" | "ready" | "error";
 type Engine = "hls.js" | "native" | "unsupported";
-type Menu = "quality" | "subtitle" | "rate" | null;
+type Menu = "quality" | "subtitle" | "rate" | "episodes" | null;
 
 const AUTO = -1;
 const HIDE_DELAY = 2500;
@@ -135,12 +173,35 @@ export function HlsPlayer({
   historyContentId,
   thumbnails,
   nextEpisode,
+  episodes = [],
+  endCard = null,
+  creditsStartSec = null,
 }: Props) {
   const router = useRouter();
   const nextEpisodeRef = useRef(nextEpisode);
   useEffect(() => {
     nextEpisodeRef.current = nextEpisode;
   }, [nextEpisode]);
+  // 프롬프트 트리거 정보(video 이벤트 핸들러에서 읽음): 크레딧 시작 + 자동 이동 대상 존재 여부.
+  const promptInfoRef = useRef({
+    creditsStartSec,
+    hasTarget: Boolean(nextEpisode || endCard),
+  });
+  useEffect(() => {
+    promptInfoRef.current = {
+      creditsStartSec,
+      hasTarget: Boolean(nextEpisode || endCard),
+    };
+  }, [creditsStartSec, nextEpisode, endCard]);
+  const reducedMotion = useReducedMotion();
+  // 다음 화 프롬프트 상태. ref 는 video 이벤트 핸들러(의존성 없는 effect)에서 읽기 위해.
+  const [nextPrompt, setNextPrompt] = useState<NextPrompt>("hidden");
+  const nextPromptRef = useRef<NextPrompt>("hidden");
+  useEffect(() => {
+    nextPromptRef.current = nextPrompt;
+  }, [nextPrompt]);
+  const navigatedRef = useRef(false);
+  const currentEpisodeRef = useRef<HTMLLIElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -157,6 +218,13 @@ export function HlsPlayer({
     defaultSubtitle(subtitles),
   );
   const [menu, setMenu] = useState<Menu>(null);
+  useEffect(() => {
+    if (menu === "episodes")
+      currentEpisodeRef.current?.scrollIntoView({
+        inline: "center",
+        block: "nearest",
+      });
+  }, [menu]);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [infoVisible, setInfoVisible] = useState(false);
 
@@ -174,8 +242,6 @@ export function HlsPlayer({
   const [ended, setEnded] = useState(false);
   const [mutedHint, setMutedHint] = useState(false);
   const [seekHover, setSeekHover] = useState<SeekHover | null>(null);
-  // null: 카운트다운 없음. 숫자: 남은 초.
-  const [nextIn, setNextIn] = useState<number | null>(null);
   const { lookup: lookupThumb } = useThumbnails(thumbnails);
 
   useWatchProgress(videoRef, mode === "full" ? historyContentId : undefined);
@@ -305,7 +371,25 @@ export function HlsPlayer({
     lastVolume.current = initial;
     setVolume(video.volume);
     if (video.volume !== initial) setVolumeSupported(false);
-    const onTime = () => setCurrentTime(video.currentTime);
+    const onTime = () => {
+      setCurrentTime(video.currentTime);
+      const info = promptInfoRef.current;
+      if (
+        !info.hasTarget ||
+        !Number.isFinite(video.duration) ||
+        !video.duration
+      )
+        return;
+      const promptAt =
+        info.creditsStartSec ??
+        Math.max(0, video.duration - NEXT_PROMPT_BEFORE_END_SEC);
+      const state = nextPromptRef.current;
+      if (video.currentTime >= promptAt && state === "hidden") {
+        setNextPrompt("counting");
+      } else if (video.currentTime < promptAt - 1 && state !== "hidden") {
+        setNextPrompt("hidden");
+      }
+    };
     const onDuration = () => setDuration(video.duration);
     const onProgress = () => {
       const b = video.buffered;
@@ -328,12 +412,8 @@ export function HlsPlayer({
     const onEnded = () => {
       setEnded(true);
       setInfoVisible(false);
-      if (nextEpisodeRef.current) setNextIn(NEXT_COUNTDOWN_SEC);
     };
-    const onSeeking = () => {
-      setEnded(false);
-      setNextIn(null);
-    };
+    const onSeeking = () => setEnded(false);
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("durationchange", onDuration);
     video.addEventListener("progress", onProgress);
@@ -399,18 +479,42 @@ export function HlsPlayer({
     };
   }, [chromeVisible, subtitle, status]);
 
+  // 다음 화 자동 이동: 버튼이 뜬 뒤 NEXT_AUTOPLAY_MS 경과, 또는 취소하지 않은 채 영상 종료.
+  // 일시정지 중엔 카운트다운도 멈춘다. 남은 시간은 ref 에 누적.
+  const nextRemainingRef = useRef(NEXT_AUTOPLAY_MS);
   useEffect(() => {
-    if (nextIn === null || !nextEpisode) return;
-    if (nextIn <= 0) {
-      router.push(nextEpisode.href);
+    if (nextPrompt !== "counting") nextRemainingRef.current = NEXT_AUTOPLAY_MS;
+  }, [nextPrompt]);
+  const autoHref = nextEpisode?.href ?? endCard?.href ?? null;
+  useEffect(() => {
+    if (mode !== "full" || !autoHref || nextPrompt === "cancelled") return;
+    const go = () => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
+      router.push(autoHref);
+    };
+    if (ended) {
+      go();
       return;
     }
-    const t = window.setTimeout(
-      () => setNextIn((n) => (n === null ? null : n - 1)),
-      1000,
-    );
-    return () => window.clearTimeout(t);
-  }, [nextIn, nextEpisode, router]);
+    if (nextPrompt !== "counting" || paused) return;
+    const startedAt = performance.now();
+    const t = window.setTimeout(go, nextRemainingRef.current);
+    return () => {
+      window.clearTimeout(t);
+      nextRemainingRef.current = Math.max(
+        0,
+        nextRemainingRef.current - (performance.now() - startedAt),
+      );
+    };
+  }, [mode, autoHref, nextPrompt, ended, paused, router]);
+
+  const replay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    video.play().catch(() => {});
+  }, []);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
@@ -536,9 +640,17 @@ export function HlsPlayer({
   ]);
 
   const levelsDesc = [...levels].sort((a, b) => b.height - a.height);
-  const trailerEnded = mode === "trailer" && ended;
+  // 종료 오버레이(트레일러 로그인 유도 / 추천 / 다음 화)가 뜨면 컨트롤·힌트 버튼은 모두 숨긴다.
+  const episodesOpen = menu === "episodes" && episodes.length > 1;
+  // 포스트플레이: 단편·마지막 화의 크레딧 구간. 본편은 오른쪽 아래로 축소되고 추천작이 뜬다.
+  const postPlay =
+    mode === "full" &&
+    !nextEpisode &&
+    Boolean(endCard) &&
+    nextPrompt === "counting" &&
+    !ended;
   const chromeClass =
-    chromeVisible && !trailerEnded
+    chromeVisible && !ended && !postPlay
       ? "opacity-100"
       : "pointer-events-none opacity-0";
   const chromeTransition =
@@ -549,7 +661,7 @@ export function HlsPlayer({
   return (
     <div
       ref={rootRef}
-      className={`relative flex h-dvh w-full flex-col bg-black ${chromeVisible || trailerEnded ? "" : "cursor-none"}`}
+      className={`relative flex h-dvh w-full flex-col bg-black ${chromeVisible || ended || postPlay ? "" : "cursor-none"}`}
       onMouseMove={showChrome}
       onTouchStart={showChrome}
       onPointerDown={(e) => {
@@ -559,12 +671,17 @@ export function HlsPlayer({
     >
       <video
         ref={videoRef}
-        className="h-full w-full object-contain"
+        className={`relative h-full w-full origin-bottom-right object-contain transition-transform duration-[var(--dur-slow)] ease-[var(--ease-out)] ${
+          postPlay
+            ? "z-20 [transform:translate(-1.5rem,-1.5rem)_scale(0.22)] cursor-pointer sm:[transform:translate(-4rem,-2rem)_scale(0.22)]"
+            : ""
+        }`}
         poster={poster}
         playsInline
         preload="metadata"
         crossOrigin="anonymous"
-        onClick={togglePlay}
+        onClick={postPlay ? () => setNextPrompt("cancelled") : togglePlay}
+        title={postPlay ? "크레딧 보기" : undefined}
       >
         {subtitles.map((s) => (
           <track
@@ -638,24 +755,84 @@ export function HlsPlayer({
         )}
       </div>
 
-      {status === "ready" &&
-        paused &&
-        !waiting &&
-        !infoVisible &&
-        !trailerEnded && (
-          <button
-            type="button"
-            onClick={togglePlay}
-            aria-label="재생"
-            className="text-ink hover:bg-paper-3/90 absolute top-1/2 left-1/2 flex size-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 backdrop-blur transition-[background-color,transform] duration-[var(--dur-base)] active:scale-95"
-          >
-            <Icon name="play" size={36} />
-          </button>
-        )}
+      {status === "ready" && paused && !waiting && !infoVisible && !ended && (
+        <button
+          type="button"
+          onClick={togglePlay}
+          aria-label="재생"
+          className="text-ink hover:bg-paper-3/90 absolute top-1/2 left-1/2 flex size-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 backdrop-blur transition-[background-color,transform] duration-[var(--dur-base)] active:scale-95"
+        >
+          <Icon name="play" size={36} />
+        </button>
+      )}
 
       <div
-        className={`absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-linear-to-t from-black/85 to-transparent px-4 pt-12 pb-4 ${chromeTransition} ${chromeClass}`}
+        className={`absolute inset-x-0 bottom-0 flex flex-col justify-end gap-2 px-4 pt-12 pb-4 transition-[opacity,background-color,min-height] duration-[var(--dur-slow)] ease-[var(--ease-out)] ${
+          episodesOpen
+            ? "min-h-[30dvh] bg-linear-to-t from-black/85 via-black/80 via-75% to-transparent"
+            : "bg-linear-to-t from-black/85 to-transparent"
+        } ${chromeClass}`}
       >
+        {episodes.length > 1 && (
+          <div
+            data-menu
+            inert={!episodesOpen}
+            aria-hidden={!episodesOpen}
+            className={`-mx-4 grid transition-[grid-template-rows,opacity,translate] duration-[var(--dur-slow)] ease-[var(--ease-out)] ${
+              episodesOpen
+                ? "translate-y-0 grid-rows-[1fr] opacity-100"
+                : "-translate-y-2 grid-rows-[0fr] opacity-0"
+            }`}
+          >
+            <ul
+              aria-label="에피소드"
+              className="flex min-h-0 snap-x gap-3 overflow-x-auto overflow-y-hidden px-4 pt-1 pb-3"
+            >
+              {episodes.map((e) => (
+                <li
+                  key={e.href}
+                  ref={e.current ? currentEpisodeRef : undefined}
+                  className="w-40 shrink-0 snap-start sm:w-52"
+                >
+                  <Link
+                    href={e.href}
+                    aria-current={e.current ? "true" : undefined}
+                    onClick={() => setMenu(null)}
+                    className="group block"
+                  >
+                    <div
+                      className={`bg-paper-2 relative aspect-video overflow-hidden rounded-lg ring-1 ${e.current ? "ring-accent ring-2" : "ring-white/10"}`}
+                    >
+                      {e.image && (
+                        <Image
+                          src={e.image}
+                          alt=""
+                          fill
+                          sizes="208px"
+                          className="object-cover transition-transform duration-[var(--dur-slow)] ease-[var(--ease-out)] group-hover:scale-105"
+                        />
+                      )}
+                      <span className="text-ink absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-xs font-semibold">
+                        {e.episodeNo}화
+                      </span>
+                      {e.current && (
+                        <span className="bg-accent absolute top-2 right-2 rounded px-1.5 py-0.5 text-xs font-semibold text-white">
+                          재생 중
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-ink mt-1.5 truncate text-sm font-medium">
+                      {e.title}
+                    </p>
+                    <p className="text-muted text-xs">
+                      {formatTime(e.durationSec)}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div
           className="group relative h-6 w-full"
           onPointerMove={updateSeekHover}
@@ -767,6 +944,20 @@ export function HlsPlayer({
 
           <div className="flex-1" />
 
+          {episodes.length > 1 && (
+            <div data-menu className="shrink-0">
+              <IconButton
+                label="에피소드"
+                onClick={() =>
+                  setMenu((m) => (m === "episodes" ? null : "episodes"))
+                }
+                expanded={menu === "episodes"}
+              >
+                <Icon name="list" />
+              </IconButton>
+            </div>
+          )}
+
           {engine === "hls.js" && levels.length > 1 && (
             <MenuButton
               id={`${menuId}-q`}
@@ -876,79 +1067,202 @@ export function HlsPlayer({
         </div>
       </div>
 
-      {mutedHint && muted && (
-        <button
-          type="button"
-          onClick={toggleMute}
-          className={`bg-paper-2/90 text-ink hover:bg-paper-3 absolute right-4 z-10 inline-flex h-11 items-center gap-2 rounded-full border border-white/10 px-4 text-sm font-medium shadow-xl backdrop-blur transition-[bottom,background-color] duration-[var(--dur-slow)] ease-[var(--ease-out)] sm:right-8 ${chromeVisible ? "bottom-28" : "bottom-4"}`}
+      {episodesOpen ? null : mode === "full" &&
+        nextEpisode &&
+        nextPrompt === "counting" &&
+        !ended ? (
+        <Link
+          href={nextEpisode.href}
+          onClick={() => {
+            navigatedRef.current = true;
+          }}
+          className={`bg-paper-2/90 text-ink absolute right-4 z-10 inline-flex h-11 items-center gap-2 overflow-hidden rounded-full px-4 text-sm font-medium shadow-xl backdrop-blur transition-[bottom] duration-[var(--dur-slow)] ease-[var(--ease-out)] sm:right-8 ${chromeVisible ? "bottom-28" : "bottom-4"}`}
         >
-          <Icon name="muted" size={18} />
-          음소거 해제
-        </button>
+          <span role="status" aria-live="polite" className="sr-only">
+            {NEXT_AUTOPLAY_MS / 1000}초 후 다음 화 {nextEpisode.title} 재생
+          </span>
+          <span aria-hidden="true" className="relative flex items-center gap-2">
+            <Icon name="play" size={18} /> 다음 화 재생
+          </span>
+          <span
+            aria-hidden="true"
+            className="next-fill bg-ink text-paper absolute inset-0 flex items-center gap-2 px-4"
+            style={{
+              animationDuration: `${NEXT_AUTOPLAY_MS}ms`,
+              animationPlayState: paused ? "paused" : "running",
+            }}
+          >
+            <Icon name="play" size={18} /> 다음 화 재생
+          </span>
+        </Link>
+      ) : (
+        mutedHint &&
+        muted &&
+        !ended && (
+          <button
+            type="button"
+            onClick={toggleMute}
+            className={`bg-paper-2/90 text-ink hover:bg-paper-3 absolute right-4 z-10 inline-flex h-11 items-center gap-2 rounded-full border border-white/10 px-4 text-sm font-medium shadow-xl backdrop-blur transition-[bottom,background-color] duration-[var(--dur-slow)] ease-[var(--ease-out)] sm:right-8 ${chromeVisible ? "bottom-28" : "bottom-4"}`}
+          >
+            <Icon name="muted" size={18} />
+            음소거 해제
+          </button>
+        )
       )}
 
-      {mode === "full" && ended && nextEpisode && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-black/75 px-6 text-center backdrop-blur-sm">
-          <p className="text-ink-2 text-sm font-medium tracking-wide">
-            {nextIn !== null ? `${nextIn}초 후 다음 화 재생` : "다음 화"}
-          </p>
-          <h2 className="text-ink max-w-xl text-2xl font-bold tracking-tight [overflow-wrap:anywhere] sm:text-4xl">
-            {nextEpisode.title}
-          </h2>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link
-              href={nextEpisode.href}
-              className="bg-ink text-paper hover:bg-ink-2 inline-flex h-12 items-center gap-2 rounded-full px-6 text-base font-semibold transition-colors duration-[var(--dur-base)] active:translate-y-px"
-            >
-              <Icon name="play" size={20} /> 지금 재생
-            </Link>
-            {nextIn !== null && (
+      {postPlay && endCard && (
+        <div className="absolute inset-0 z-10 overflow-hidden bg-black">
+          {endCard.image && (
+            <Image
+              src={endCard.image}
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover"
+            />
+          )}
+          {endCard.trailer && !reducedMotion && (
+            <TrailerPreview src={endCard.trailer} />
+          )}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-linear-to-t from-black/85 via-black/35 via-45% to-transparent sm:bg-linear-to-r sm:from-black/80 sm:via-black/30 sm:via-50% sm:to-transparent"
+          />
+          <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col justify-end px-6 pb-28 sm:px-16 sm:pr-[32%] sm:pb-24">
+            <p className="text-ink-2 text-sm font-medium tracking-wide sm:text-base">
+              {endCard.eyebrow}
+            </p>
+            <h2 className="text-ink mt-2 max-w-2xl text-3xl font-bold tracking-tight [overflow-wrap:anywhere] sm:text-5xl">
+              {endCard.title}
+            </h2>
+            <p className="text-ink-2 mt-3 text-sm">{endCard.meta}</p>
+            {endCard.description && (
+              <p className="text-ink-2 mt-4 line-clamp-3 max-w-xl text-base leading-relaxed break-keep sm:text-lg">
+                {endCard.description}
+              </p>
+            )}
+            <div className="mt-7 flex flex-wrap gap-3">
+              <span role="status" aria-live="polite" className="sr-only">
+                {NEXT_AUTOPLAY_MS / 1000}초 후 {endCard.title} 자동 재생
+              </span>
+              <Link
+                href={endCard.href}
+                onClick={() => {
+                  navigatedRef.current = true;
+                }}
+                className="bg-ink/25 text-ink relative inline-flex h-12 items-center gap-2 overflow-hidden rounded-full px-6 text-base font-semibold backdrop-blur transition-[filter] duration-[var(--dur-base)] hover:brightness-125 active:translate-y-px"
+              >
+                <span className="relative flex items-center gap-2">
+                  <Icon name="play" size={20} /> {endCard.cta}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="next-fill bg-ink text-paper absolute inset-0 flex items-center gap-2 px-6"
+                  style={{
+                    animationDuration: `${NEXT_AUTOPLAY_MS}ms`,
+                    animationPlayState: paused ? "paused" : "running",
+                  }}
+                >
+                  <Icon name="play" size={20} /> {endCard.cta}
+                </span>
+              </Link>
+              {endCard.detailHref && (
+                <Link
+                  href={endCard.detailHref}
+                  scroll={false}
+                  onClick={() => {
+                    navigatedRef.current = true;
+                    setNextPrompt("cancelled");
+                  }}
+                  className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 text-base font-medium backdrop-blur transition-colors duration-[var(--dur-base)]"
+                >
+                  상세 정보
+                </Link>
+              )}
               <button
                 type="button"
-                onClick={() => setNextIn(null)}
-                className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center rounded-full border border-white/20 px-6 text-base font-medium transition-colors duration-[var(--dur-base)]"
+                onClick={() => setNextPrompt("cancelled")}
+                className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 text-base font-medium backdrop-blur transition-colors duration-[var(--dur-base)]"
               >
-                취소
+                크레딧 보기
               </button>
-            )}
+            </div>
           </div>
         </div>
       )}
 
-      {mode === "trailer" && ended && (
-        <div
-          role="dialog"
-          aria-labelledby="trailer-end-title"
-          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-black/85 px-6 text-center"
-        >
-          <h2
-            id="trailer-end-title"
-            className="text-ink max-w-lg text-2xl font-bold break-keep sm:text-3xl"
-          >
-            로그인하고 {title} 전체를 감상하세요
-          </h2>
-          <div className="mt-2 flex flex-wrap justify-center gap-3">
-            <Link
-              href={loginHref}
-              className="bg-accent inline-flex h-12 items-center rounded-full px-6 text-base font-semibold text-white transition-[filter] duration-[var(--dur-base)] hover:brightness-110 active:translate-y-px"
-            >
-              로그인하고 전체 보기
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                const v = videoRef.current;
-                if (!v) return;
-                v.currentTime = 0;
-                v.play();
-              }}
-              className="text-ink hover:bg-paper-3 inline-flex h-12 items-center rounded-full border border-white/20 px-6 text-base font-medium transition-colors duration-[var(--dur-base)]"
-            >
-              다시 보기
-            </button>
+      {mode === "full" &&
+        ended &&
+        (nextPrompt === "cancelled" || (!nextEpisode && !endCard)) && (
+          <div className="absolute inset-0 overflow-hidden bg-black">
+            {endCard?.image && (
+              <Image
+                src={endCard.image}
+                alt=""
+                fill
+                priority
+                sizes="100vw"
+                className="object-cover"
+              />
+            )}
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-black/25 sm:bg-linear-to-r sm:from-black/90 sm:via-black/45 sm:to-black/10"
+            />
+            <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col justify-end px-6 pb-20 sm:px-16 sm:pb-24">
+              {endCard ? (
+                <>
+                  <p className="text-ink-2 text-sm font-medium tracking-wide sm:text-base">
+                    {endCard.eyebrow}
+                  </p>
+                  <h2 className="text-ink mt-2 max-w-2xl text-3xl font-bold tracking-tight [overflow-wrap:anywhere] sm:text-5xl">
+                    {endCard.title}
+                  </h2>
+                  <p className="text-ink-2 mt-3 text-sm">{endCard.meta}</p>
+                  {endCard.description && (
+                    <p className="text-ink-2 mt-4 line-clamp-3 max-w-xl text-base leading-relaxed break-keep sm:text-lg">
+                      {endCard.description}
+                    </p>
+                  )}
+                  <div className="mt-7 flex flex-wrap gap-3">
+                    <Link
+                      href={endCard.href}
+                      onClick={() => {
+                        navigatedRef.current = true;
+                      }}
+                      className="bg-ink text-paper hover:bg-ink-2 inline-flex h-12 items-center gap-2 rounded-full px-6 text-base font-semibold transition-colors duration-[var(--dur-base)] active:translate-y-px"
+                    >
+                      <Icon name="play" size={20} /> {endCard.cta}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={replay}
+                      className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 text-base font-medium backdrop-blur transition-colors duration-[var(--dur-base)]"
+                    >
+                      <Icon name="replay" size={18} /> 다시 보기
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-ink text-3xl font-bold tracking-tight sm:text-5xl">
+                    재생이 끝났습니다
+                  </h2>
+                  <div className="mt-7">
+                    <button
+                      type="button"
+                      onClick={replay}
+                      className="text-ink hover:bg-paper-3/70 inline-flex h-12 items-center gap-2 rounded-full border border-white/20 bg-black/40 px-6 text-base font-medium backdrop-blur transition-colors duration-[var(--dur-base)]"
+                    >
+                      <Icon name="replay" size={18} /> 다시 보기
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {status === "error" && (
         <div
@@ -975,11 +1289,14 @@ function IconButton({
   label,
   onClick,
   disabled,
+  expanded,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** 토글형 버튼(패널 열림)일 때 aria-expanded + 눌림 배경 */
+  expanded?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -987,9 +1304,10 @@ function IconButton({
       type="button"
       aria-label={label}
       title={label}
+      aria-expanded={expanded}
       onClick={onClick}
       disabled={disabled}
-      className="text-ink hover:bg-paper-3 active:bg-paper-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors duration-[var(--dur-base)] disabled:cursor-not-allowed disabled:opacity-50"
+      className="text-ink hover:bg-paper-3 active:bg-paper-2 aria-expanded:bg-paper-3 inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors duration-[var(--dur-base)] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </button>
@@ -1001,12 +1319,15 @@ function MenuButton({
   label,
   open,
   onToggle,
+  wide = false,
   children,
 }: {
   id: string;
   label: string;
   open: boolean;
   onToggle: () => void;
+  /** 긴 항목(에피소드 제목)용 넓은 패널 */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -1025,7 +1346,7 @@ function MenuButton({
         <ul
           id={id}
           role="menu"
-          className="bg-paper-2 border-rule absolute right-0 bottom-full z-10 mb-2 min-w-44 overflow-hidden rounded-xl border py-1 shadow-xl"
+          className={`bg-paper-2 border-rule absolute right-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border py-1 shadow-xl ${wide ? "w-72 max-w-[calc(100vw-2rem)]" : "min-w-44"}`}
         >
           {children}
         </ul>
@@ -1060,6 +1381,19 @@ function MenuItem({
 
 const ICONS = {
   back: <path d="M15 5l-7 7 7 7" />,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  list: (
+    <>
+      <path d="M4 6h2M4 12h2M4 18h2" />
+      <path d="M10 6h10M10 12h10M10 18h10" />
+    </>
+  ),
+  replay: (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.5-5.8" />
+      <path d="M4 4v5h5" />
+    </>
+  ),
   play: <path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none" />,
   pause: (
     <path
@@ -1138,5 +1472,19 @@ function Icon({
     >
       {ICONS[name]}
     </svg>
+  );
+}
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+function subscribeReducedMotion(cb: () => void) {
+  const mq = window.matchMedia(REDUCED_MOTION_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+function useReducedMotion() {
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    () => window.matchMedia(REDUCED_MOTION_QUERY).matches,
+    () => false,
   );
 }

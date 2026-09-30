@@ -183,3 +183,16 @@ video::-webkit-media-text-track-display-backdrop {
   border-radius: 9999px;
   background: var(--color-ink);
 }
+
+/* 다음 화 버튼: 배경이 왼쪽에서 오른쪽으로 차오른다. 진행 표시라 reduced-motion 에서도 유지. */
+@keyframes next-fill {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.next-fill {
+  animation: next-fill linear forwards;
+}
