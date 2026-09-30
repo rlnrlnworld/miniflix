@@ -20,10 +20,19 @@ export function TitleModal({
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // 뒤 화면(플레이어 포함)은 inert: 탭 포커스·클릭·단축키에서 제외. 닫히면 열었던 요소로 포커스 복귀.
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const behind = document.querySelector<HTMLElement>("[data-site-content]");
+    behind?.setAttribute("inert", "");
     panelRef.current?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
+      behind?.removeAttribute("inert");
+      opener?.focus();
     };
   }, [router]);
 

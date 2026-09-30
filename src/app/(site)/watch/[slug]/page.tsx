@@ -113,14 +113,6 @@ export default async function WatchPage({
         loginHref={loginHref}
         historyContentId={content.id}
         startAt={startAt}
-        nextEpisode={
-          !trailerOnly && nextEpisode
-            ? {
-                href: `/watch/${nextEpisode.slug}`,
-                title: `${nextEpisode.episodeNo}화 · ${nextEpisode.title}`,
-              }
-            : undefined
-        }
         creditsStartSec={trailerOnly ? null : content.creditsStartSec}
         episodes={
           !trailerOnly && episodes.length > 1
