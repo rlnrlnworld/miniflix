@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type Hls from "hls.js";
+import { storageAuthenticatedPrefix } from "@/lib/storage";
+import { createClient } from "@/lib/supabase/client";
+import { supabaseEnv } from "@/lib/supabase/env";
 import { useWatchProgress } from "./use-watch-progress";
 
 export type SubtitleTrack = {
@@ -50,6 +53,31 @@ function storeVolume(v: number) {
   } catch {}
 }
 const SUBTITLE_PRIORITY = ["ko", "en"];
+const STREAM_PREFIX = "/api/stream/";
+
+/** 네이티브 HLS 는 요청 헤더를 못 붙이므로 서버에 서명 URL 모드를 요청한다. */
+function nativeSrc(src: string): string {
+  if (!src.startsWith(STREAM_PREFIX)) return src;
+  return `${src}${src.includes("?") ? "&" : "?"}native=1`;
+}
+
+/**
+ * private 버킷 세그먼트 요청에 사용자 JWT 를 싣는다.
+ * Storage RLS 가 검증하므로 URL 이 유출돼도 세션 없이는 403.
+ */
+function createAuthXhrSetup() {
+  const supabase = createClient();
+  const prefix = storageAuthenticatedPrefix(supabaseEnv().url);
+  return async (xhr: XMLHttpRequest, url: string) => {
+    if (!url.startsWith(prefix)) return;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+    xhr.open("GET", url, true);
+    xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+  };
+}
 
 function defaultSubtitle(subtitles: SubtitleTrack[]): string {
   const explicit = subtitles.find((s) => s.isDefault);
@@ -140,7 +168,12 @@ export function HlsPlayer({
       if (disposed || !video) return;
 
       if (Hls.isSupported()) {
-        const hls = new Hls({ startPosition: startAt ?? -1 });
+        const hls = new Hls({
+          startPosition: startAt ?? -1,
+          xhrSetup: src.startsWith(STREAM_PREFIX)
+            ? createAuthXhrSetup()
+            : undefined,
+        });
         hlsRef.current = hls;
         hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
           setLevels(
@@ -163,7 +196,8 @@ export function HlsPlayer({
             });
         });
         let lastReload = 0;
-        const reloadSigned = () => {
+        // 401/403: 세션 만료 등. 플레이리스트부터 다시 받는다.
+        const reloadSource = () => {
           const now = Date.now();
           if (now - lastReload < RELOAD_COOLDOWN_MS) return false;
           lastReload = now;
@@ -180,7 +214,11 @@ export function HlsPlayer({
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             const code = data.response?.code;
-            if ((code === 400 || code === 403) && reloadSigned()) return;
+            if (
+              (code === 400 || code === 401 || code === 403) &&
+              reloadSource()
+            )
+              return;
             hls.startLoad();
             return;
           }
@@ -200,7 +238,7 @@ export function HlsPlayer({
 
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         setEngine("native");
-        video.src = src;
+        video.src = nativeSrc(src);
         if (startAt) video.currentTime = startAt;
         setStatus("ready");
         autoplay(video, () => setMutedHint(true));
