@@ -125,21 +125,14 @@ pnpm db:seed
 pnpm dev                     # http://localhost:3000
 ```
 
-### 콘텐츠 추가
+## 🎛 인코딩 방식
 
-```bash
-bash scripts/encode.sh media/source/<name>.mp4 <slug>                      # TS 3렌디션
-bash scripts/encode-fmp4.sh media/source/<name>.mp4 <slug> --ladder 720    # fMP4 + 오디오 분리
-pnpm upload <slug>                      # private 버킷
-pnpm upload <slug> subs --public        # 자막 vtt
-pnpm upload <slug>-trailer --public     # 트레일러
-bash scripts/thumbs.sh <slug>           # 시크 썸네일 (cwebp 필요)
-pnpm upload <slug> thumbs --public
-# prisma/seed.mts 에 항목 추가 후
-pnpm db:seed
-```
-
-시리즈(에피소드 묶음)는 `prisma/seed.mts`의 `series` 배열에 항목을 추가하고, 각 에피소드 콘텐츠에 `seriesSlug` · `episodeNo`를 넣습니다. 시리즈 slug는 `/title/[slug]`를 콘텐츠와 공유하므로 겹치지 않게 합니다.
+- **코덱** H.264 (libx264, main profile) + AAC 128k 스테레오. FFmpeg 한 번 실행으로 원본을 `split` 해 3렌디션 동시 생성
+- **비트레이트 래더** 1080p 3000k · 720p 1500k · 480p 800k (`maxrate`/`bufsize` 제한으로 ABR 전환 시 버퍼 안정)
+- **GOP 2초 고정** `sc_threshold 0`으로 장면 전환 키프레임을 끄고 모든 렌디션의 키프레임 위치를 맞춤 → 세그먼트 경계가 일치해야 화질 전환이 끊김 없이 됨
+- **세그먼트** 6초 · `independent_segments` · VOD 플레이리스트. TS(오디오 muxed) 또는 fMP4/CMAF(오디오 렌디션 1벌 분리) 선택
+- **시크 썸네일** 480p 렌디션에서 5초 간격으로 프레임 추출 → 160×90 타일 10×10 스프라이트(webp q70) + 좌표를 담은 `thumbs.vtt`
+- 풀버전은 private 버킷, 자막·트레일러·썸네일은 public 버킷에 업로드 후 `prisma/seed.mts`로 메타데이터 등록
 
 ---
 
