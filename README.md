@@ -143,3 +143,9 @@ pnpm dev                     # http://localhost:3000
 - **Big Buck Bunny** — Blender Foundation, CC BY 3.0 · 캡션: demuxed/big-buck-captions (CC BY 3.0)
 - **Spring** — Blender Animation Studio, CC BY 4.0 · 캡션: Wikimedia Commons TimedText (CC BY 4.0)
 - **Caminandes 2: Gran Dillama · 3: Llamigos** — Blender Foundation, CC BY 3.0 · 트레일러는 Caminandes 1: Llama Drama
+
+---
+
+## 📄 라이선스
+
+코드는 [MIT](./LICENSE). 영상 콘텐츠는 위 출처의 CC BY 라이선스를 따릅니다.
